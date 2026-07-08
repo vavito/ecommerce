@@ -31,7 +31,11 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = []
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
