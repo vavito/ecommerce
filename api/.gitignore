@@ -1,2 +1,5 @@
 plano_ecommerce_fastapi.html
 plano_ecommerce_fastapi.pdf
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
