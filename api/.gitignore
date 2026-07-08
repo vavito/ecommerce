@@ -3,3 +3,4 @@ plano_ecommerce_fastapi.pdf
 *.egg-info/
 .ruff_cache/
 .pytest_cache/
+__pycache__
