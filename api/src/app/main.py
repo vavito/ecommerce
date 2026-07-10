@@ -6,6 +6,7 @@ app = FastAPI(
     description="API de Ecommerce em FastAPI para portfolio backend.",
 )
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
