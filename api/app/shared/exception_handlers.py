@@ -4,19 +4,20 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .exceptions import AppException
+from .schemas import ErrorResponse
 
 
 async def app_exception_handler(
     _request: Request,
     exc: AppException,
 ) -> JSONResponse:
+    error_response = ErrorResponse(
+        code=exc.code, message=exc.message, details=exc.details or {}
+    )
+
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "code": exc.code,
-            "message": exc.message,
-            "details": exc.details or {},
-        },
+        content=jsonable_encoder(error_response),
     )
 
 
@@ -24,17 +25,16 @@ async def validation_exception_handler(
     _request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
+
+    error_response = ErrorResponse(
+        code="VALIDATION_ERROR",
+        message="Dados de entrada invalidos.",
+        details={"errors": exc.errors()},
+    )
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        content=jsonable_encoder(
-            {
-                "code": "VALIDATION_ERROR",
-                "message": "Dados de entrada invalidos.",
-                "details": {
-                    "errors": exc.errors(),
-                },
-            }
-        ),
+        content=jsonable_encoder(error_response),
     )
 
 
