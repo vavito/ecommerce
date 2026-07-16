@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from sqlalchemy import Boolean, Enum, ForeignKey, String, false, true
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.base_model import BaseModel
 from app.shared.enums import UserRole
@@ -24,6 +24,13 @@ class User(BaseModel):
         server_default=true(),
     )
 
+    enderecos: Mapped[list["Address"]] = relationship(
+        back_populates="usuario",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
 class Address(BaseModel):
     __tablename__ = "addresses"
 
@@ -43,4 +50,8 @@ class Address(BaseModel):
         Boolean,
         default=False,
         server_default=false(),
+    )
+
+    usuario: Mapped["User"] = relationship(
+        back_populates="enderecos",
     )
