@@ -5,7 +5,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.database import async_session_maker, get_session
-from app.core.security import decode_access_token, hash_password
+from app.core.security import create_access_token, decode_access_token, hash_password
 from app.main import app
 from app.modules.user.models import User
 
@@ -73,5 +73,58 @@ async def test_login_endpoint_returns_standard_error_for_incorrect_password(
     assert response.json() == {
         "code": "INVALID_CREDENTIALS",
         "message": "Email ou senha invalidos.",
+        "details": {},
+    }
+
+
+async def test_users_me_returns_authenticated_user(
+    active_user: tuple[User, str],
+) -> None:
+    user, _password = active_user
+    token = create_access_token(str(user.id))
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/users/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["id"] == str(user.id)
+    assert body["email"] == user.email
+    assert "cpf" not in body
+    assert "senha_hash" not in body
+
+
+async def test_users_me_requires_access_token() -> None:
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/users/me")
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "code": "AUTHENTICATION_REQUIRED",
+        "message": "Token de autenticacao nao informado.",
+        "details": {},
+    }
+
+
+async def test_users_me_rejects_invalid_access_token() -> None:
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/users/me",
+            headers={"Authorization": "Bearer token-invalido"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "code": "INVALID_TOKEN",
+        "message": "Token de autenticacao invalido.",
         "details": {},
     }
