@@ -21,6 +21,46 @@ def make_stock(*, quantity: int = 10, reserved: int = 0) -> Stock:
     )
 
 
+async def test_create_initial_stock_accepts_zero_quantity() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    product_id = uuid4()
+    repository.get_by_product_id.return_value = None
+    repository.add.side_effect = lambda stock: stock
+
+    result = await service.create_initial_stock(product_id, 0)
+
+    assert result.produto_id == product_id
+    assert result.quantidade == 0
+    assert result.quantidade_reservada == 0
+    repository.add.assert_awaited_once_with(result)
+
+
+async def test_create_initial_stock_rejects_duplicate_stock() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    stock = make_stock()
+    repository.get_by_product_id.return_value = stock
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.create_initial_stock(stock.produto_id, 10)
+
+    assert exc_info.value.code == "STOCK_ALREADY_EXISTS"
+    assert exc_info.value.details == {"product_id": str(stock.produto_id)}
+    repository.add.assert_not_awaited()
+
+
+async def test_create_initial_stock_rejects_negative_quantity() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+
+    with pytest.raises(BusinessRuleException) as exc_info:
+        await service.create_initial_stock(uuid4(), -1)
+
+    assert exc_info.value.code == "INVALID_STOCK_QUANTITY"
+    repository.get_by_product_id.assert_not_awaited()
+
+
 async def test_increase_adds_to_physical_stock() -> None:
     repository = AsyncMock(spec=StockRepository)
     service = StockService(repository)
