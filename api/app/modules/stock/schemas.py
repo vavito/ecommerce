@@ -3,9 +3,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .enums import StockOperation
+
 
 class StockCreate(BaseModel):
     quantidade: int = Field(ge=0)
+
+
+class StockAdjust(BaseModel):
+    operacao: StockOperation
+    quantidade: int = Field(gt=0)
 
 
 class StockOut(BaseModel):
