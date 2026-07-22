@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -125,3 +126,95 @@ async def test_update_product_endpoint_returns_not_found() -> None:
         "message": "Produto nao encontrado.",
         "details": {"product_id": str(product_id)},
     }
+
+
+async def test_list_products_endpoint_returns_only_active_products(
+    product_category: tuple[AsyncSession, Category],
+) -> None:
+    session, category = product_category
+    unique_value = uuid4().hex
+    session.add_all(
+        [
+            Product(
+                categoria_id=category.id,
+                nome="Mouse sem fio",
+                descricao=None,
+                sku=f"MOUSE-ATIVO-{unique_value}",
+                preco=Decimal("149.90"),
+                ativo=True,
+            ),
+            Product(
+                categoria_id=category.id,
+                nome="Mouse antigo",
+                descricao=None,
+                sku=f"MOUSE-INATIVO-{unique_value}",
+                preco=Decimal("49.90"),
+                ativo=False,
+            ),
+        ]
+    )
+    await session.flush()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/products",
+            params={"nome": "mouse", "categoria_id": str(category.id)},
+        )
+
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["total"] == 1
+    assert body["offset"] == 0
+    assert body["limit"] == 20
+    assert [product["nome"] for product in body["items"]] == ["Mouse sem fio"]
+
+
+async def test_list_products_endpoint_paginates_results(
+    product_category: tuple[AsyncSession, Category],
+) -> None:
+    session, category = product_category
+    unique_value = uuid4().hex
+    session.add_all(
+        [
+            Product(
+                categoria_id=category.id,
+                nome="Teclado compacto",
+                descricao=None,
+                sku=f"TEC-COM-{unique_value}",
+                preco=Decimal("199.90"),
+                ativo=True,
+            ),
+            Product(
+                categoria_id=category.id,
+                nome="Teclado mecanico",
+                descricao=None,
+                sku=f"TEC-MEC-{unique_value}",
+                preco=Decimal("299.90"),
+                ativo=True,
+            ),
+        ]
+    )
+    await session.flush()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/products",
+            params={
+                "nome": "teclado",
+                "categoria_id": str(category.id),
+                "offset": 1,
+                "limit": 1,
+            },
+        )
+
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["total"] == 2
+    assert body["offset"] == 1
+    assert body["limit"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["nome"] == "Teclado mecanico"
