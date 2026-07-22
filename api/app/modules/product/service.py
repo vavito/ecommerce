@@ -84,6 +84,18 @@ class ProductService:
 
         return product
 
+    async def get_active_product(self, product_id: UUID) -> Product:
+        product = await self.get_product(product_id)
+
+        if not product.ativo:
+            raise NotFoundException(
+                code="PRODUCT_NOT_FOUND",
+                message="Produto nao encontrado.",
+                details={"product_id": str(product_id)},
+            )
+
+        return product
+
     async def create_product(self, product: Product) -> Product:
         product.nome = self._normalize_name(product.nome)
         product.sku = self._normalize_sku(product.sku)

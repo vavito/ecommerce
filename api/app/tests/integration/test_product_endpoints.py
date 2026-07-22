@@ -218,3 +218,71 @@ async def test_list_products_endpoint_paginates_results(
     assert body["limit"] == 1
     assert len(body["items"]) == 1
     assert body["items"][0]["nome"] == "Teclado mecanico"
+
+
+async def test_get_product_endpoint_returns_active_product(
+    product_category: tuple[AsyncSession, Category],
+) -> None:
+    session, category = product_category
+    product = Product(
+        categoria_id=category.id,
+        nome="Monitor ultrawide",
+        descricao="Monitor de 34 polegadas.",
+        sku=f"MONITOR-{uuid4().hex}",
+        preco=Decimal("2499.90"),
+        ativo=True,
+    )
+    session.add(product)
+    await session.flush()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/products/{product.id}")
+
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["id"] == str(product.id)
+    assert body["categoria_id"] == str(category.id)
+    assert body["nome"] == product.nome
+    assert body["sku"] == product.sku
+    assert body["preco"] == "2499.90"
+    assert body["ativo"] is True
+
+
+async def test_get_product_endpoint_returns_not_found() -> None:
+    product_id = uuid4()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/products/{product_id}")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "code": "PRODUCT_NOT_FOUND",
+        "message": "Produto nao encontrado.",
+        "details": {"product_id": str(product_id)},
+    }
+
+
+async def test_get_product_endpoint_hides_inactive_product(
+    product_category: tuple[AsyncSession, Category],
+) -> None:
+    session, category = product_category
+    product = Product(
+        categoria_id=category.id,
+        nome="Produto desativado",
+        descricao=None,
+        sku=f"INATIVO-{uuid4().hex}",
+        preco=Decimal("10.00"),
+        ativo=False,
+    )
+    session.add(product)
+    await session.flush()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/products/{product.id}")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PRODUCT_NOT_FOUND"
