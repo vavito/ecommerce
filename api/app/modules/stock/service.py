@@ -6,6 +6,7 @@ from app.shared.exceptions import (
     NotFoundException,
 )
 
+from .enums import StockOperation
 from .models import Stock
 from .repository import StockRepository
 
@@ -120,6 +121,17 @@ class StockService:
         self._ensure_stock_has_availability(stock, quantity)
         stock.quantidade -= quantity
         return await self.repository.update(stock)
+
+    async def adjust(
+        self,
+        product_id: UUID,
+        operation: StockOperation,
+        quantity: int,
+    ) -> Stock:
+        if operation is StockOperation.ENTRY:
+            return await self.increase(product_id, quantity)
+
+        return await self.decrease(product_id, quantity)
 
     async def reserve(self, product_id: UUID, quantity: int) -> Stock:
         self._validate_positive_quantity(quantity)
