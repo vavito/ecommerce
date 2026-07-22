@@ -24,6 +24,15 @@ class StockService:
             )
 
     @staticmethod
+    def _validate_initial_quantity(quantity: int) -> None:
+        if quantity < 0:
+            raise BusinessRuleException(
+                code="INVALID_STOCK_QUANTITY",
+                message="Quantidade inicial nao pode ser negativa.",
+                details={"quantidade": quantity},
+            )
+
+    @staticmethod
     def _raise_stock_not_found(product_id: UUID) -> None:
         raise NotFoundException(
             code="STOCK_NOT_FOUND",
@@ -62,6 +71,28 @@ class StockService:
             self._raise_stock_not_found(product_id)
 
         return stock
+
+    async def create_initial_stock(
+        self,
+        product_id: UUID,
+        quantity: int,
+    ) -> Stock:
+        self._validate_initial_quantity(quantity)
+        existing_stock = await self.repository.get_by_product_id(product_id)
+
+        if existing_stock is not None:
+            raise ConflictException(
+                code="STOCK_ALREADY_EXISTS",
+                message="Estoque ja cadastrado para este produto.",
+                details={"product_id": str(product_id)},
+            )
+
+        stock = Stock(
+            produto_id=product_id,
+            quantidade=quantity,
+            quantidade_reservada=0,
+        )
+        return await self.repository.add(stock)
 
     async def _get_stock_for_update(self, product_id: UUID) -> Stock:
         stock = await self.repository.get_by_product_id_for_update(product_id)

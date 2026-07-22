@@ -1,7 +1,11 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class StockCreate(BaseModel):
+    quantidade: int = Field(ge=0)
 
 
 class StockOut(BaseModel):
