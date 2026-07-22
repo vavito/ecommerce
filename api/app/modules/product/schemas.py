@@ -50,3 +50,10 @@ class ProductOut(BaseModel):
     ativo: bool
     criado_em: datetime
     atualizado_em: datetime
+
+
+class ProductListOut(BaseModel):
+    items: list[ProductOut]
+    total: int
+    offset: int
+    limit: int
