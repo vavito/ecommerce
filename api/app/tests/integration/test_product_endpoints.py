@@ -1,5 +1,5 @@
 from collections.abc import AsyncGenerator
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -70,3 +70,58 @@ async def test_create_product_endpoint_returns_persisted_product(
     assert body["ativo"] is True
     assert saved_product is not None
     assert str(saved_product.id) == body["id"]
+
+
+async def test_update_product_endpoint_changes_only_sent_fields(
+    product_category: tuple[AsyncSession, Category],
+) -> None:
+    session, category = product_category
+    transport = ASGITransport(app=app)
+    create_payload = {
+        "categoria_id": str(category.id),
+        "nome": "Teclado mecanico",
+        "descricao": "Teclado com switches mecanicos.",
+        "sku": "tec-mec-001",
+        "preco": "299.90",
+    }
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        create_response = await client.post(
+            "/admin/products",
+            json=create_payload,
+        )
+        product_id = create_response.json()["id"]
+        update_response = await client.patch(
+            f"/admin/products/{product_id}",
+            json={"preco": "249.90"},
+        )
+
+    body = update_response.json()
+    saved_product = await ProductRepository(session).get_by_id(UUID(product_id))
+
+    assert create_response.status_code == 201
+    assert update_response.status_code == 200
+    assert body["preco"] == "249.90"
+    assert body["nome"] == create_payload["nome"]
+    assert body["sku"] == "TEC-MEC-001"
+    assert saved_product is not None
+    assert str(saved_product.preco) == "249.90"
+    assert saved_product.nome == create_payload["nome"]
+
+
+async def test_update_product_endpoint_returns_not_found() -> None:
+    product_id = uuid4()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.patch(
+            f"/admin/products/{product_id}",
+            json={"preco": "249.90"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "code": "PRODUCT_NOT_FOUND",
+        "message": "Produto nao encontrado.",
+        "details": {"product_id": str(product_id)},
+    }

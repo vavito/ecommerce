@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +8,7 @@ from app.core.database import get_session
 
 from .mapper import ProductMapper
 from .repository import ProductRepository
-from .schemas import ProductCreate, ProductOut
+from .schemas import ProductCreate, ProductOut, ProductUpdate
 from .service import ProductService
 
 router = APIRouter(tags=["products"])
@@ -34,3 +35,23 @@ async def create_product(
     await session.refresh(created_product)
 
     return ProductMapper.to_output(created_product)
+
+
+@router.patch(
+    "/admin/products/{product_id}",
+    response_model=ProductOut,
+)
+async def update_product(
+    product_id: UUID,
+    data: ProductUpdate,
+    session: SessionDep,
+) -> ProductOut:
+    repository = ProductRepository(session)
+    service = ProductService(repository)
+
+    updated_product = await service.update_product(product_id, data)
+
+    await session.commit()
+    await session.refresh(updated_product)
+
+    return ProductMapper.to_output(updated_product)
