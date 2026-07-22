@@ -49,11 +49,12 @@ async def test_create_product_endpoint_returns_persisted_product(
 ) -> None:
     session, category = product_category
     transport = ASGITransport(app=app)
+    sku = f"tec-mec-{uuid4().hex}"
     payload = {
         "categoria_id": str(category.id),
         "nome": "Teclado mecanico",
         "descricao": "Teclado com switches mecanicos.",
-        "sku": "tec-mec-001",
+        "sku": sku,
         "preco": "299.90",
     }
 
@@ -61,12 +62,12 @@ async def test_create_product_endpoint_returns_persisted_product(
         response = await client.post("/admin/products", json=payload)
 
     body = response.json()
-    saved_product = await ProductRepository(session).get_by_sku("TEC-MEC-001")
+    saved_product = await ProductRepository(session).get_by_sku(sku.upper())
 
     assert response.status_code == 201
     assert body["categoria_id"] == str(category.id)
     assert body["nome"] == payload["nome"]
-    assert body["sku"] == "TEC-MEC-001"
+    assert body["sku"] == sku.upper()
     assert body["preco"] == "299.90"
     assert body["ativo"] is True
     assert saved_product is not None
@@ -78,11 +79,12 @@ async def test_update_product_endpoint_changes_only_sent_fields(
 ) -> None:
     session, category = product_category
     transport = ASGITransport(app=app)
+    sku = f"tec-mec-{uuid4().hex}"
     create_payload = {
         "categoria_id": str(category.id),
         "nome": "Teclado mecanico",
         "descricao": "Teclado com switches mecanicos.",
-        "sku": "tec-mec-001",
+        "sku": sku,
         "preco": "299.90",
     }
 
@@ -104,7 +106,7 @@ async def test_update_product_endpoint_changes_only_sent_fields(
     assert update_response.status_code == 200
     assert body["preco"] == "249.90"
     assert body["nome"] == create_payload["nome"]
-    assert body["sku"] == "TEC-MEC-001"
+    assert body["sku"] == sku.upper()
     assert saved_product is not None
     assert str(saved_product.preco) == "249.90"
     assert saved_product.nome == create_payload["nome"]
