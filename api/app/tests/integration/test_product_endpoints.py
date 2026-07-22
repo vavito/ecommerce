@@ -49,10 +49,11 @@ async def test_create_product_endpoint_returns_persisted_product(
 ) -> None:
     session, category = product_category
     transport = ASGITransport(app=app)
-    sku = f"tec-mec-{uuid4().hex}"
+    unique_value = uuid4().hex
+    sku = f"tec-mec-{unique_value}"
     payload = {
         "categoria_id": str(category.id),
-        "nome": "Teclado mecanico",
+        "nome": f"Teclado mecanico {unique_value}",
         "descricao": "Teclado com switches mecanicos.",
         "sku": sku,
         "preco": "299.90",
@@ -67,6 +68,7 @@ async def test_create_product_endpoint_returns_persisted_product(
     assert response.status_code == 201
     assert body["categoria_id"] == str(category.id)
     assert body["nome"] == payload["nome"]
+    assert body["slug"] == f"teclado-mecanico-{unique_value}"
     assert body["sku"] == sku.upper()
     assert body["preco"] == "299.90"
     assert body["ativo"] is True
@@ -140,6 +142,7 @@ async def test_list_products_endpoint_returns_only_active_products(
             Product(
                 categoria_id=category.id,
                 nome="Mouse sem fio",
+                slug=f"mouse-sem-fio-{unique_value}",
                 descricao=None,
                 sku=f"MOUSE-ATIVO-{unique_value}",
                 preco=Decimal("149.90"),
@@ -148,6 +151,7 @@ async def test_list_products_endpoint_returns_only_active_products(
             Product(
                 categoria_id=category.id,
                 nome="Mouse antigo",
+                slug=f"mouse-antigo-{unique_value}",
                 descricao=None,
                 sku=f"MOUSE-INATIVO-{unique_value}",
                 preco=Decimal("49.90"),
@@ -183,6 +187,7 @@ async def test_list_products_endpoint_paginates_results(
             Product(
                 categoria_id=category.id,
                 nome="Teclado compacto",
+                slug=f"teclado-compacto-{unique_value}",
                 descricao=None,
                 sku=f"TEC-COM-{unique_value}",
                 preco=Decimal("199.90"),
@@ -191,6 +196,7 @@ async def test_list_products_endpoint_paginates_results(
             Product(
                 categoria_id=category.id,
                 nome="Teclado mecanico",
+                slug=f"teclado-mecanico-{unique_value}",
                 descricao=None,
                 sku=f"TEC-MEC-{unique_value}",
                 preco=Decimal("299.90"),
@@ -226,11 +232,13 @@ async def test_get_product_endpoint_returns_active_product(
     product_category: tuple[AsyncSession, Category],
 ) -> None:
     session, category = product_category
+    unique_value = uuid4().hex
     product = Product(
         categoria_id=category.id,
         nome="Monitor ultrawide",
+        slug=f"monitor-ultrawide-{unique_value}",
         descricao="Monitor de 34 polegadas.",
-        sku=f"MONITOR-{uuid4().hex}",
+        sku=f"MONITOR-{unique_value}",
         preco=Decimal("2499.90"),
         ativo=True,
     )
@@ -271,11 +279,13 @@ async def test_get_product_endpoint_hides_inactive_product(
     product_category: tuple[AsyncSession, Category],
 ) -> None:
     session, category = product_category
+    unique_value = uuid4().hex
     product = Product(
         categoria_id=category.id,
         nome="Produto desativado",
+        slug=f"produto-desativado-{unique_value}",
         descricao=None,
-        sku=f"INATIVO-{uuid4().hex}",
+        sku=f"INATIVO-{unique_value}",
         preco=Decimal("10.00"),
         ativo=False,
     )
@@ -288,3 +298,44 @@ async def test_get_product_endpoint_hides_inactive_product(
 
     assert response.status_code == 404
     assert response.json()["code"] == "PRODUCT_NOT_FOUND"
+
+
+async def test_get_product_by_slug_endpoint_returns_active_product(
+    product_category: tuple[AsyncSession, Category],
+) -> None:
+    session, category = product_category
+    unique_value = uuid4().hex
+    product = Product(
+        categoria_id=category.id,
+        nome="Webcam Full HD",
+        slug=f"webcam-full-hd-{unique_value}",
+        descricao=None,
+        sku=f"WEBCAM-{unique_value}",
+        preco=Decimal("399.90"),
+        ativo=True,
+    )
+    session.add(product)
+    await session.flush()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/products/by-slug/{product.slug}")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == str(product.id)
+    assert response.json()["slug"] == product.slug
+
+
+async def test_get_product_by_slug_endpoint_returns_not_found() -> None:
+    slug = f"produto-inexistente-{uuid4().hex}"
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/products/by-slug/{slug}")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "code": "PRODUCT_NOT_FOUND",
+        "message": "Produto nao encontrado.",
+        "details": {"slug": slug},
+    }

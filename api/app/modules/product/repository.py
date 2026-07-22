@@ -20,6 +20,11 @@ class ProductRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
+    async def get_by_slug(self, slug: str) -> Product | None:
+        statement = select(Product).where(Product.slug == slug)
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none()
+
     async def get_category_by_id(self, category_id: UUID) -> Category | None:
         statement = select(Category).where(Category.id == category_id)
         result = await self.session.execute(statement)

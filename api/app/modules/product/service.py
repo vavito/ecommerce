@@ -6,6 +6,7 @@ from app.shared.exceptions import (
     ConflictException,
     NotFoundException,
 )
+from app.shared.slug import slugify
 
 from .models import Product
 from .repository import ProductRepository
@@ -13,6 +14,8 @@ from .schemas import ProductUpdate
 
 
 class ProductService:
+    _SLUG_MAX_LENGTH = 220
+
     def __init__(self, repository: ProductRepository) -> None:
         self.repository = repository
 
@@ -72,6 +75,20 @@ class ProductService:
                 details={"category_id": str(category_id)},
             )
 
+    async def _generate_unique_slug(self, name: str) -> str:
+        base_slug = slugify(name) or "produto"
+        candidate = base_slug[: self._SLUG_MAX_LENGTH]
+        suffix = 2
+
+        while await self.repository.get_by_slug(candidate) is not None:
+            suffix_text = f"-{suffix}"
+            candidate = (
+                f"{base_slug[: self._SLUG_MAX_LENGTH - len(suffix_text)]}{suffix_text}"
+            )
+            suffix += 1
+
+        return candidate
+
     async def get_product(self, product_id: UUID) -> Product:
         product = await self.repository.get_by_id(product_id)
 
@@ -96,6 +113,19 @@ class ProductService:
 
         return product
 
+    async def get_active_product_by_slug(self, slug: str) -> Product:
+        normalized_slug = slugify(slug)
+        product = await self.repository.get_by_slug(normalized_slug)
+
+        if product is None or not product.ativo:
+            raise NotFoundException(
+                code="PRODUCT_NOT_FOUND",
+                message="Produto nao encontrado.",
+                details={"slug": slug},
+            )
+
+        return product
+
     async def create_product(self, product: Product) -> Product:
         product.nome = self._normalize_name(product.nome)
         product.sku = self._normalize_sku(product.sku)
@@ -103,6 +133,7 @@ class ProductService:
 
         await self._ensure_category_exists(product.categoria_id)
         await self._ensure_sku_is_available(product.sku)
+        product.slug = await self._generate_unique_slug(product.nome)
 
         return await self.repository.add(product)
 

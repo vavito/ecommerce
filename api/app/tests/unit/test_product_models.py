@@ -10,6 +10,7 @@ def test_category_and_product_relationship_is_bidirectional() -> None:
     )
     product = Product(
         nome="Teclado mecanico",
+        slug="teclado-mecanico",
         descricao="Teclado com switches mecanicos.",
         sku="TEC-MEC-001",
         preco=Decimal("299.90"),

@@ -88,6 +88,22 @@ async def list_products(
 
 
 @router.get(
+    "/products/by-slug/{slug}",
+    response_model=ProductOut,
+)
+async def get_product_by_slug(
+    slug: str,
+    session: SessionDep,
+) -> ProductOut:
+    repository = ProductRepository(session)
+    service = ProductService(repository)
+
+    product = await service.get_active_product_by_slug(slug)
+
+    return ProductMapper.to_output(product)
+
+
+@router.get(
     "/products/{product_id}",
     response_model=ProductOut,
 )

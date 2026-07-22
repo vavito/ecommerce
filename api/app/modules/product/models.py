@@ -46,6 +46,7 @@ class Product(BaseModel):
         index=True,
     )
     nome: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(220), unique=True, index=True)
     descricao: Mapped[str | None] = mapped_column(Text)
     sku: Mapped[str] = mapped_column(String(50), unique=True)
     preco: Mapped[Decimal] = mapped_column(Numeric(10, 2))

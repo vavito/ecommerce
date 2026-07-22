@@ -23,6 +23,7 @@ async def test_product_repository_adds_updates_and_finds_product() -> None:
             product = Product(
                 categoria_id=category.id,
                 nome="Teclado mecanico",
+                slug=f"teclado-mecanico-{unique_value.hex}",
                 descricao=None,
                 sku=f"TEC-{unique_value.hex}",
                 preco=Decimal("299.90"),
@@ -33,6 +34,7 @@ async def test_product_repository_adds_updates_and_finds_product() -> None:
 
             product_by_id = await repository.get_by_id(product.id)
             product_by_sku = await repository.get_by_sku(product.sku)
+            product_by_slug = await repository.get_by_slug(product.slug)
             category_by_id = await repository.get_category_by_id(category.id)
 
             product.nome = "Teclado mecanico atualizado"
@@ -41,6 +43,7 @@ async def test_product_repository_adds_updates_and_finds_product() -> None:
             assert created_product is product
             assert product_by_id is product
             assert product_by_sku is product
+            assert product_by_slug is product
             assert category_by_id is category
             assert updated_product.nome == "Teclado mecanico atualizado"
         finally:
@@ -69,6 +72,7 @@ async def test_product_repository_filters_and_paginates_products() -> None:
                 Product(
                     categoria_id=electronics.id,
                     nome="Teclado compacto",
+                    slug=f"teclado-compacto-{unique_value.hex}",
                     descricao=None,
                     sku=f"TEC-COM-{unique_value.hex}",
                     preco=Decimal("199.90"),
@@ -77,6 +81,7 @@ async def test_product_repository_filters_and_paginates_products() -> None:
                 Product(
                     categoria_id=electronics.id,
                     nome="Teclado mecanico",
+                    slug=f"teclado-mecanico-{unique_value.hex}",
                     descricao=None,
                     sku=f"TEC-MEC-{unique_value.hex}",
                     preco=Decimal("299.90"),
@@ -85,6 +90,7 @@ async def test_product_repository_filters_and_paginates_products() -> None:
                 Product(
                     categoria_id=electronics.id,
                     nome="Teclado antigo",
+                    slug=f"teclado-antigo-{unique_value.hex}",
                     descricao=None,
                     sku=f"TEC-ANT-{unique_value.hex}",
                     preco=Decimal("99.90"),
@@ -93,6 +99,7 @@ async def test_product_repository_filters_and_paginates_products() -> None:
                 Product(
                     categoria_id=books.id,
                     nome="Livro sobre teclados",
+                    slug=f"livro-sobre-teclados-{unique_value.hex}",
                     descricao=None,
                     sku=f"LIV-TEC-{unique_value.hex}",
                     preco=Decimal("59.90"),

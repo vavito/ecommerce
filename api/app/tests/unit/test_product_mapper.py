@@ -31,6 +31,7 @@ def test_product_mapper_converts_entity_to_output() -> None:
         id=uuid4(),
         categoria_id=uuid4(),
         nome="Teclado mecanico",
+        slug="teclado-mecanico",
         descricao=None,
         sku="TEC-MEC-001",
         preco=Decimal("299.90"),
@@ -44,6 +45,7 @@ def test_product_mapper_converts_entity_to_output() -> None:
     assert output.id == product.id
     assert output.categoria_id == product.categoria_id
     assert output.nome == product.nome
+    assert output.slug == product.slug
     assert output.descricao is None
     assert output.sku == product.sku
     assert output.preco == product.preco

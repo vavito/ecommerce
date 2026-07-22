@@ -19,6 +19,7 @@ class CategorySeed:
 class ProductSeed:
     categoria_slug: str
     nome: str
+    slug: str
     descricao: str
     sku: str
     preco: Decimal
@@ -34,6 +35,7 @@ PRODUCT_SEEDS = (
     ProductSeed(
         categoria_slug="eletronicos",
         nome="Fone de ouvido Bluetooth",
+        slug="fone-de-ouvido-bluetooth",
         descricao="Fone sem fio com estojo de carregamento.",
         sku="FONE-BT-001",
         preco=Decimal("199.90"),
@@ -41,6 +43,7 @@ PRODUCT_SEEDS = (
     ProductSeed(
         categoria_slug="eletronicos",
         nome="Monitor ultrawide",
+        slug="monitor-ultrawide",
         descricao="Monitor ultrawide de 34 polegadas.",
         sku="MON-UW-001",
         preco=Decimal("2499.90"),
@@ -48,6 +51,7 @@ PRODUCT_SEEDS = (
     ProductSeed(
         categoria_slug="informatica",
         nome="Teclado mecanico",
+        slug="teclado-mecanico",
         descricao="Teclado mecanico com iluminacao.",
         sku="TEC-MEC-001",
         preco=Decimal("299.90"),
@@ -55,6 +59,7 @@ PRODUCT_SEEDS = (
     ProductSeed(
         categoria_slug="informatica",
         nome="Mouse sem fio",
+        slug="mouse-sem-fio",
         descricao="Mouse ergonomico com conexao sem fio.",
         sku="MOUSE-SF-001",
         preco=Decimal("149.90"),
@@ -62,6 +67,7 @@ PRODUCT_SEEDS = (
     ProductSeed(
         categoria_slug="livros",
         nome="Arquitetura de software",
+        slug="arquitetura-de-software",
         descricao="Livro introdutorio sobre arquitetura de software.",
         sku="LIV-ARQ-001",
         preco=Decimal("89.90"),
@@ -69,6 +75,7 @@ PRODUCT_SEEDS = (
     ProductSeed(
         categoria_slug="livros",
         nome="Python para APIs",
+        slug="python-para-apis",
         descricao="Livro pratico sobre desenvolvimento de APIs com Python.",
         sku="LIV-PYT-001",
         preco=Decimal("79.90"),
@@ -110,6 +117,7 @@ async def create_product_if_missing(
         Product(
             categoria_id=category.id,
             nome=seed.nome,
+            slug=seed.slug,
             descricao=seed.descricao,
             sku=seed.sku,
             preco=seed.preco,

@@ -28,6 +28,7 @@ async def test_create_product_normalizes_and_persists_valid_product() -> None:
     )
     repository.get_category_by_id.return_value = category
     repository.get_by_sku.return_value = None
+    repository.get_by_slug.return_value = None
     repository.add.return_value = product
 
     result = await service.create_product(product)
@@ -35,8 +36,10 @@ async def test_create_product_normalizes_and_persists_valid_product() -> None:
     assert result is product
     assert product.nome == "Teclado mecanico"
     assert product.sku == "TEC-MEC-001"
+    assert product.slug == "teclado-mecanico"
     repository.get_category_by_id.assert_awaited_once_with(category.id)
     repository.get_by_sku.assert_awaited_once_with("TEC-MEC-001")
+    repository.get_by_slug.assert_awaited_once_with("teclado-mecanico")
     repository.add.assert_awaited_once_with(product)
 
 
@@ -60,6 +63,7 @@ async def test_create_product_rejects_duplicate_sku() -> None:
         id=uuid4(),
         categoria_id=category_id,
         nome="Outro teclado",
+        slug="outro-teclado",
         descricao=None,
         sku=product.sku,
         preco=Decimal("199.90"),
@@ -134,6 +138,7 @@ async def test_update_product_applies_partial_changes() -> None:
         id=uuid4(),
         categoria_id=uuid4(),
         nome="Teclado mecanico",
+        slug="teclado-mecanico",
         descricao="Descricao antiga",
         sku="TEC-MEC-001",
         preco=Decimal("299.90"),
@@ -153,8 +158,40 @@ async def test_update_product_applies_partial_changes() -> None:
 
     assert result is product
     assert product.nome == "Teclado atualizado"
+    assert product.slug == "teclado-mecanico"
     assert product.descricao is None
     assert product.sku == "TEC-MEC-002"
     assert product.preco == Decimal("349.90")
     repository.get_by_sku.assert_awaited_once_with("TEC-MEC-002")
     repository.update.assert_awaited_once_with(product)
+
+
+async def test_create_product_adds_suffix_to_duplicate_slug() -> None:
+    repository = AsyncMock(spec=ProductRepository)
+    service = ProductService(repository)
+    category = Category(id=uuid4(), nome="Eletronicos", slug="eletronicos")
+    product = Product(
+        categoria_id=category.id,
+        nome="Cafeteira Eletrica",
+        descricao=None,
+        sku="CAF-002",
+        preco=Decimal("199.90"),
+    )
+    existing_product = Product(
+        id=uuid4(),
+        categoria_id=category.id,
+        nome="Cafeteira Eletrica",
+        slug="cafeteira-eletrica",
+        descricao=None,
+        sku="CAF-001",
+        preco=Decimal("149.90"),
+    )
+    repository.get_category_by_id.return_value = category
+    repository.get_by_sku.return_value = None
+    repository.get_by_slug.side_effect = [existing_product, None]
+    repository.add.return_value = product
+
+    result = await service.create_product(product)
+
+    assert result.slug == "cafeteira-eletrica-2"
+    assert repository.get_by_slug.await_count == 2

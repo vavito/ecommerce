@@ -63,6 +63,7 @@ def test_category_and_product_outputs_accept_orm_models() -> None:
         id=uuid4(),
         categoria_id=category.id,
         nome="Teclado mecanico",
+        slug="teclado-mecanico",
         descricao=None,
         sku="TEC-MEC-001",
         preco=Decimal("299.90"),
@@ -76,4 +77,5 @@ def test_category_and_product_outputs_accept_orm_models() -> None:
 
     assert category_output.id == category.id
     assert product_output.id == product.id
+    assert product_output.slug == product.slug
     assert product_output.preco == Decimal("299.90")

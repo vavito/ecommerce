@@ -44,6 +44,7 @@ class ProductOut(BaseModel):
     id: UUID
     categoria_id: UUID
     nome: str
+    slug: str
     descricao: str | None
     sku: str
     preco: Decimal
