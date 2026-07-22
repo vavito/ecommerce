@@ -10,7 +10,7 @@ from app.modules.product.service import ProductService
 
 from .mapper import StockMapper
 from .repository import StockRepository
-from .schemas import StockCreate, StockOut
+from .schemas import StockAdjust, StockCreate, StockOut
 from .service import StockService
 
 router = APIRouter(tags=["stock"])
@@ -33,6 +33,28 @@ async def create_stock(
 
     await product_service.get_product(product_id)
     stock = await stock_service.create_initial_stock(product_id, data.quantidade)
+
+    await session.commit()
+    await session.refresh(stock)
+
+    return StockMapper.to_output(stock)
+
+
+@router.patch(
+    "/admin/products/{product_id}/stock",
+    response_model=StockOut,
+)
+async def adjust_stock(
+    product_id: UUID,
+    data: StockAdjust,
+    session: SessionDep,
+) -> StockOut:
+    service = StockService(StockRepository(session))
+    stock = await service.adjust(
+        product_id,
+        data.operacao,
+        data.quantidade,
+    )
 
     await session.commit()
     await session.refresh(stock)
