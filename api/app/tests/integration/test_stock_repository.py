@@ -42,6 +42,9 @@ async def test_stock_repository_adds_updates_and_finds_stock() -> None:
             stock_by_product = await repository.get_by_product_id(product.id)
             locked_stock = await repository.get_by_product_id_for_update(product.id)
 
+            assert created_stock.quantidade_reservada == 0
+            assert created_stock.quantidade_disponivel == 10
+
             stock.quantidade = 8
             updated_stock = await repository.update(stock)
 
@@ -49,6 +52,7 @@ async def test_stock_repository_adds_updates_and_finds_stock() -> None:
             assert stock_by_product is stock
             assert locked_stock is stock
             assert updated_stock.quantidade == 8
+            assert updated_stock.quantidade_disponivel == 8
         finally:
             await session.rollback()
 

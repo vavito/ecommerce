@@ -17,6 +17,7 @@ def test_stock_belongs_to_product_and_enforces_domain_constraints() -> None:
     stock = Stock(
         produto=product,
         quantidade=10,
+        quantidade_reservada=3,
     )
     check_constraint_names = {
         constraint.name
@@ -26,5 +27,9 @@ def test_stock_belongs_to_product_and_enforces_domain_constraints() -> None:
 
     assert stock.produto is product
     assert stock.quantidade == 10
+    assert stock.quantidade_reservada == 3
+    assert stock.quantidade_disponivel == 7
     assert Stock.__table__.c.produto_id.unique is True
     assert "ck_stocks_quantidade_non_negative" in check_constraint_names
+    assert "ck_stocks_quantidade_reservada_non_negative" in check_constraint_names
+    assert "ck_stocks_quantidade_reservada_lte_quantidade" in check_constraint_names
