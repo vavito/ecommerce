@@ -60,3 +60,17 @@ async def adjust_stock(
     await session.refresh(stock)
 
     return StockMapper.to_output(stock)
+
+
+@router.get(
+    "/admin/products/{product_id}/stock",
+    response_model=StockOut,
+)
+async def get_stock(
+    product_id: UUID,
+    session: SessionDep,
+) -> StockOut:
+    service = StockService(StockRepository(session))
+    stock = await service.get_stock(product_id)
+
+    return StockMapper.to_output(stock)

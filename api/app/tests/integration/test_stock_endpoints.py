@@ -215,3 +215,46 @@ async def test_adjust_stock_endpoint_returns_stock_not_found(
         "message": "Estoque nao encontrado.",
         "details": {"product_id": str(product.id)},
     }
+
+
+async def test_get_stock_endpoint_returns_stock_output(
+    stock_product: tuple[AsyncSession, Product],
+) -> None:
+    _, product = stock_product
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        create_response = await client.post(
+            f"/admin/products/{product.id}/stock",
+            json={"quantidade": 12},
+        )
+        response = await client.get(f"/admin/products/{product.id}/stock")
+
+    body = response.json()
+
+    assert create_response.status_code == 201
+    assert response.status_code == 200
+    assert body["id"] == create_response.json()["id"]
+    assert body["produto_id"] == str(product.id)
+    assert body["quantidade"] == 12
+    assert body["quantidade_reservada"] == 0
+    assert body["quantidade_disponivel"] == 12
+    assert "criado_em" in body
+    assert "atualizado_em" in body
+
+
+async def test_get_stock_endpoint_returns_not_found_for_product_without_stock(
+    stock_product: tuple[AsyncSession, Product],
+) -> None:
+    _, product = stock_product
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/admin/products/{product.id}/stock")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "code": "STOCK_NOT_FOUND",
+        "message": "Estoque nao encontrado.",
+        "details": {"product_id": str(product.id)},
+    }
