@@ -48,6 +48,7 @@ class CartService:
             Cart(
                 usuario_id=user_id,
                 status=CartStatus.OPEN,
+                itens=[],
             )
         )
 
