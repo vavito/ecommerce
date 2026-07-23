@@ -1,8 +1,10 @@
+from decimal import Decimal
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+from app.modules.product.models import Product
 from app.modules.stock.models import Stock
 from app.modules.stock.repository import StockRepository
 from app.modules.stock.service import StockService
@@ -18,6 +20,20 @@ def make_stock(*, quantity: int = 10, reserved: int = 0) -> Stock:
         produto_id=uuid4(),
         quantidade=quantity,
         quantidade_reservada=reserved,
+    )
+
+
+def make_product(*, active: bool = True) -> Product:
+    unique_value = uuid4().hex
+    return Product(
+        id=uuid4(),
+        categoria_id=uuid4(),
+        nome="Teclado mecanico",
+        slug=f"teclado-mecanico-{unique_value}",
+        descricao=None,
+        sku=f"TEC-{unique_value}",
+        preco=Decimal("299.90"),
+        ativo=active,
     )
 
 
@@ -171,6 +187,109 @@ async def test_stock_not_found_returns_standard_error() -> None:
 
     assert exc_info.value.code == "STOCK_NOT_FOUND"
     assert exc_info.value.details == {"product_id": str(product_id)}
+
+
+async def test_ensure_sellable_accepts_active_product_with_available_stock() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    product = make_product()
+    stock = Stock(
+        produto_id=product.id,
+        quantidade=10,
+        quantidade_reservada=2,
+    )
+    repository.get_by_product_id.return_value = stock
+
+    result = await service.ensure_sellable(product, 8)
+
+    assert result is stock
+    assert result.quantidade_disponivel == 8
+
+
+async def test_ensure_sellable_rejects_inactive_product() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    product = make_product(active=False)
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.ensure_sellable(product, 1)
+
+    assert exc_info.value.code == "PRODUCT_INACTIVE"
+    assert exc_info.value.details == {"product_id": str(product.id)}
+    repository.get_by_product_id.assert_not_awaited()
+
+
+async def test_ensure_sellable_treats_missing_stock_as_unavailable() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    product = make_product()
+    repository.get_by_product_id.return_value = None
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.ensure_sellable(product, 1)
+
+    assert exc_info.value.code == "INSUFFICIENT_STOCK"
+    assert exc_info.value.details == {
+        "quantidade_solicitada": 1,
+        "quantidade_disponivel": 0,
+    }
+
+
+async def test_ensure_sellable_rejects_zero_stock() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    product = make_product()
+    repository.get_by_product_id.return_value = Stock(
+        produto_id=product.id,
+        quantidade=0,
+        quantidade_reservada=0,
+    )
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.ensure_sellable(product, 1)
+
+    assert exc_info.value.code == "INSUFFICIENT_STOCK"
+
+
+async def test_ensure_sellable_considers_reserved_quantity() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    product = make_product()
+    repository.get_by_product_id.return_value = Stock(
+        produto_id=product.id,
+        quantidade=10,
+        quantidade_reservada=8,
+    )
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.ensure_sellable(product, 3)
+
+    assert exc_info.value.code == "INSUFFICIENT_STOCK"
+    assert exc_info.value.details == {
+        "quantidade_solicitada": 3,
+        "quantidade_disponivel": 2,
+    }
+
+
+async def test_reserve_for_sale_uses_lock_and_reserves_stock() -> None:
+    repository = AsyncMock(spec=StockRepository)
+    service = StockService(repository)
+    product = make_product()
+    stock = Stock(
+        produto_id=product.id,
+        quantidade=10,
+        quantidade_reservada=2,
+    )
+    repository.get_by_product_id_for_update.return_value = stock
+    repository.update.return_value = stock
+
+    result = await service.reserve_for_sale(product, 3)
+
+    assert result.quantidade == 10
+    assert result.quantidade_reservada == 5
+    assert result.quantidade_disponivel == 5
+    repository.get_by_product_id_for_update.assert_awaited_once_with(product.id)
+    repository.update.assert_awaited_once_with(stock)
 
 
 @pytest.mark.parametrize("quantity", [0, -1])

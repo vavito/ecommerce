@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from app.modules.product.models import Product
 from app.shared.exceptions import (
     BusinessRuleException,
     ConflictException,
@@ -44,13 +45,29 @@ class StockService:
     @staticmethod
     def _ensure_stock_has_availability(stock: Stock, quantity: int) -> None:
         if stock.quantidade_disponivel < quantity:
+            StockService._raise_insufficient_stock(
+                quantity,
+                stock.quantidade_disponivel,
+            )
+
+    @staticmethod
+    def _raise_insufficient_stock(quantity: int, available_quantity: int) -> None:
+        raise ConflictException(
+            code="INSUFFICIENT_STOCK",
+            message="Estoque insuficiente.",
+            details={
+                "quantidade_solicitada": quantity,
+                "quantidade_disponivel": available_quantity,
+            },
+        )
+
+    @staticmethod
+    def _ensure_product_is_active(product: Product) -> None:
+        if not product.ativo:
             raise ConflictException(
-                code="INSUFFICIENT_STOCK",
-                message="Estoque insuficiente.",
-                details={
-                    "quantidade_solicitada": quantity,
-                    "quantidade_disponivel": stock.quantidade_disponivel,
-                },
+                code="PRODUCT_INACTIVE",
+                message="Produto inativo nao pode ser vendido.",
+                details={"product_id": str(product.id)},
             )
 
     @staticmethod
@@ -109,6 +126,17 @@ class StockService:
         self._ensure_stock_has_availability(stock, quantity)
         return stock
 
+    async def ensure_sellable(self, product: Product, quantity: int) -> Stock:
+        self._validate_positive_quantity(quantity)
+        self._ensure_product_is_active(product)
+        stock = await self.repository.get_by_product_id(product.id)
+
+        if stock is None:
+            self._raise_insufficient_stock(quantity, 0)
+
+        self._ensure_stock_has_availability(stock, quantity)
+        return stock
+
     async def increase(self, product_id: UUID, quantity: int) -> Stock:
         self._validate_positive_quantity(quantity)
         stock = await self._get_stock_for_update(product_id)
@@ -136,6 +164,18 @@ class StockService:
     async def reserve(self, product_id: UUID, quantity: int) -> Stock:
         self._validate_positive_quantity(quantity)
         stock = await self._get_stock_for_update(product_id)
+        self._ensure_stock_has_availability(stock, quantity)
+        stock.quantidade_reservada += quantity
+        return await self.repository.update(stock)
+
+    async def reserve_for_sale(self, product: Product, quantity: int) -> Stock:
+        self._validate_positive_quantity(quantity)
+        self._ensure_product_is_active(product)
+        stock = await self.repository.get_by_product_id_for_update(product.id)
+
+        if stock is None:
+            self._raise_insufficient_stock(quantity, 0)
+
         self._ensure_stock_has_availability(stock, quantity)
         stock.quantidade_reservada += quantity
         return await self.repository.update(stock)
