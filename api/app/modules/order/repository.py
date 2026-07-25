@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,15 +18,31 @@ class OrderRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
-    async def list_by_user_id(self, user_id: UUID) -> list[Order]:
+    async def list_by_user_id(
+        self,
+        user_id: UUID,
+        *,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[Order], int]:
+        count_statement = select(func.count(Order.id)).where(
+            Order.usuario_id == user_id
+        )
+        count_result = await self.session.execute(count_statement)
+        total = count_result.scalar_one()
+
         statement = (
             select(Order)
             .options(selectinload(Order.itens))
             .where(Order.usuario_id == user_id)
             .order_by(Order.criado_em.desc(), Order.id.desc())
+            .offset(offset)
+            .limit(limit)
         )
         result = await self.session.execute(statement)
-        return list(result.scalars().all())
+        orders = list(result.scalars().all())
+
+        return orders, total
 
     async def add(self, order: Order) -> Order:
         self.session.add(order)
