@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import (
@@ -17,6 +18,9 @@ from app.modules.user.models import User
 from app.shared.base_model import BaseModel
 
 from .enums import OrderStatus
+
+if TYPE_CHECKING:
+    from app.modules.payment.models import Payment
 
 
 class Order(BaseModel):
@@ -63,6 +67,12 @@ class Order(BaseModel):
         back_populates="pedido",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    pagamento: Mapped["Payment"] = relationship(
+        back_populates="pedido",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,
     )
 
 
