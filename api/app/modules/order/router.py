@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,3 +80,18 @@ async def list_orders(
         offset=offset,
         limit=limit,
     )
+
+
+@router.get(
+    "/{order_id}",
+    response_model=OrderOut,
+)
+async def get_order(
+    order_id: UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> OrderOut:
+    service = _build_order_service(session)
+    order = await service.get_order(current_user.id, order_id)
+
+    return OrderMapper.to_output(order)
