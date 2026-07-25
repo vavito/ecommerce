@@ -138,3 +138,16 @@ class OrderService:
         await self.cart_repository.update(cart)
 
         return created_order
+
+    async def list_orders(
+        self,
+        user_id: UUID,
+        *,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[Order], int]:
+        return await self.repository.list_by_user_id(
+            user_id,
+            offset=offset,
+            limit=limit,
+        )
