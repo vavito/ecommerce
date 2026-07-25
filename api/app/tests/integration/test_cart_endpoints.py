@@ -501,3 +501,55 @@ async def test_delete_cart_item_requires_access_token() -> None:
 
     assert response.status_code == 401
     assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
+
+
+async def test_cart_flow_keeps_total_after_repeated_product_and_stock_error(
+    stocked_cart_product: tuple[AsyncSession, User, str, Product, Stock],
+) -> None:
+    _session, _user, token, product, stock = stocked_cart_product
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first_response = await client.post(
+            "/cart/items",
+            json={
+                "produto_id": str(product.id),
+                "quantidade": 2,
+            },
+            headers=headers,
+        )
+        second_response = await client.post(
+            "/cart/items",
+            json={
+                "produto_id": str(product.id),
+                "quantidade": 3,
+            },
+            headers=headers,
+        )
+        cart_response = await client.get("/cart", headers=headers)
+        rejected_response = await client.post(
+            "/cart/items",
+            json={
+                "produto_id": str(product.id),
+                "quantidade": stock.quantidade - 4,
+            },
+            headers=headers,
+        )
+        unchanged_cart_response = await client.get("/cart", headers=headers)
+
+    cart_body = cart_response.json()
+    unchanged_cart_body = unchanged_cart_response.json()
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert second_response.json()["id"] == first_response.json()["id"]
+    assert len(cart_body["itens"]) == 1
+    assert cart_body["itens"][0]["quantidade"] == 5
+    assert cart_body["itens"][0]["subtotal"] == "749.50"
+    assert cart_body["total_estimado"] == "749.50"
+
+    assert rejected_response.status_code == 409
+    assert rejected_response.json()["code"] == "INSUFFICIENT_STOCK"
+    assert unchanged_cart_body["itens"] == cart_body["itens"]
+    assert unchanged_cart_body["total_estimado"] == "749.50"
