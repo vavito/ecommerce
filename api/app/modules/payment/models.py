@@ -13,6 +13,12 @@ if TYPE_CHECKING:
     from app.modules.order.models import Order
 
 
+def _get_order_model() -> type["Order"]:
+    from app.modules.order.models import Order
+
+    return Order
+
+
 class Payment(BaseModel):
     __tablename__ = "payments"
     __table_args__ = (
@@ -51,5 +57,6 @@ class Payment(BaseModel):
     )
 
     pedido: Mapped["Order"] = relationship(
+        _get_order_model,
         back_populates="pagamento",
     )
