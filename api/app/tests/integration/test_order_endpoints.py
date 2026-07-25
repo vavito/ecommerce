@@ -12,7 +12,7 @@ from app.core.security import create_access_token
 from app.main import app
 from app.modules.cart.enums import CartStatus
 from app.modules.cart.models import Cart, CartItem
-from app.modules.order.models import Order
+from app.modules.order.models import Order, OrderItem
 from app.modules.order.repository import OrderRepository
 from app.modules.payment.enums import PaymentStatus
 from app.modules.payment.models import Payment
@@ -182,3 +182,102 @@ async def test_checkout_endpoint_requires_access_token() -> None:
         "message": "Token de autenticacao nao informado.",
         "details": {},
     }
+
+
+async def test_list_orders_returns_authenticated_users_paginated_history(
+    checkout_endpoint_data: tuple[
+        AsyncSession,
+        User,
+        str,
+        Address,
+        Product,
+        Stock,
+        Cart,
+    ],
+) -> None:
+    session, user, token, address, product, _stock, _cart = checkout_endpoint_data
+    repository = OrderRepository(session)
+    address_snapshot = {
+        "cep": address.cep,
+        "rua": address.rua,
+        "numero": address.numero,
+        "complemento": address.complemento,
+        "bairro": address.bairro,
+        "cidade": address.cidade,
+        "estado": address.estado,
+    }
+
+    for shipping_amount in (Decimal("0.00"), Decimal("10.00")):
+        await repository.add(
+            Order(
+                usuario_id=user.id,
+                valor_produtos=product.preco,
+                valor_frete=shipping_amount,
+                valor_total=product.preco + shipping_amount,
+                endereco_snapshot=address_snapshot,
+                itens=[
+                    OrderItem(
+                        produto_id=product.id,
+                        nome_produto_snapshot=product.nome,
+                        sku_snapshot=product.sku,
+                        quantidade=1,
+                        preco_unitario_snapshot=product.preco,
+                        preco_total=product.preco,
+                    )
+                ],
+            )
+        )
+    await session.commit()
+
+    nested_transaction = await session.begin_nested()
+    try:
+        unique_value = uuid4().hex
+        other_user = User(
+            nome="Maria",
+            email=f"maria-order-history-{unique_value}@example.com",
+            cpf=unique_value[:11],
+            senha_hash="hash",
+        )
+        session.add(other_user)
+        await session.flush()
+        await repository.add(
+            Order(
+                usuario_id=other_user.id,
+                valor_produtos=product.preco,
+                valor_frete=Decimal("0.00"),
+                valor_total=product.preco,
+                endereco_snapshot=address_snapshot,
+                itens=[],
+            )
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                "/orders",
+                params={"offset": 1, "limit": 1},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    finally:
+        await nested_transaction.rollback()
+
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["total"] == 2
+    assert body["offset"] == 1
+    assert body["limit"] == 1
+    assert len(body["items"]) == 1
+    assert body["items"][0]["usuario_id"] == str(user.id)
+    assert len(body["items"][0]["itens"]) == 1
+    assert body["items"][0]["itens"][0]["produto_id"] == str(product.id)
+
+
+async def test_list_orders_requires_access_token() -> None:
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/orders")
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
