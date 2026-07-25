@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,7 @@ from app.modules.user.models import User
 
 from .mapper import CartMapper
 from .repository import CartRepository
-from .schemas import CartItemCreate, CartItemOut, CartOut
+from .schemas import CartItemCreate, CartItemOut, CartItemUpdate, CartOut
 from .service import CartService
 
 router = APIRouter(tags=["cart"])
@@ -60,6 +61,29 @@ async def add_cart_item(
     item = await service.add_item(
         current_user.id,
         data.produto_id,
+        data.quantidade,
+    )
+
+    await session.commit()
+    await session.refresh(item)
+
+    return CartMapper.item_to_output(item)
+
+
+@router.patch(
+    "/cart/items/{item_id}",
+    response_model=CartItemOut,
+)
+async def update_cart_item(
+    item_id: UUID,
+    data: CartItemUpdate,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> CartItemOut:
+    service = _build_cart_service(session)
+    item = await service.update_item_quantity(
+        current_user.id,
+        item_id,
         data.quantidade,
     )
 
