@@ -2,9 +2,14 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .enums import CartStatus
+
+
+class CartItemCreate(BaseModel):
+    produto_id: UUID
+    quantidade: int = Field(gt=0)
 
 
 class CartItemOut(BaseModel):
