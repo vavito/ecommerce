@@ -18,6 +18,22 @@ class OrderRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
+    async def get_by_id_and_user_id(
+        self,
+        order_id: UUID,
+        user_id: UUID,
+    ) -> Order | None:
+        statement = (
+            select(Order)
+            .options(selectinload(Order.itens))
+            .where(
+                Order.id == order_id,
+                Order.usuario_id == user_id,
+            )
+        )
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none()
+
     async def list_by_user_id(
         self,
         user_id: UUID,
