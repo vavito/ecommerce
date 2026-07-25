@@ -257,3 +257,25 @@ async def test_checkout_rejects_negative_shipping_amount() -> None:
     user_repository.get_address_by_id_and_user_id.assert_not_awaited()
     stock_service.reserve_for_sale.assert_not_awaited()
     repository.add.assert_not_awaited()
+
+
+async def test_list_orders_delegates_user_and_pagination_to_repository() -> None:
+    service, repository, _cart_repository, _stock_service, _user_repository = (
+        make_service()
+    )
+    user_id = uuid4()
+    repository.list_by_user_id.return_value = ([], 0)
+
+    orders, total = await service.list_orders(
+        user_id,
+        offset=20,
+        limit=10,
+    )
+
+    assert orders == []
+    assert total == 0
+    repository.list_by_user_id.assert_awaited_once_with(
+        user_id,
+        offset=20,
+        limit=10,
+    )
