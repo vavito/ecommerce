@@ -45,3 +45,10 @@ class OrderOut(BaseModel):
     itens: list[OrderItemOut]
     criado_em: datetime
     atualizado_em: datetime
+
+
+class OrderListOut(BaseModel):
+    items: list[OrderOut]
+    total: int
+    offset: int
+    limit: int
