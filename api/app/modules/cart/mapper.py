@@ -6,7 +6,7 @@ from .schemas import CartItemOut, CartOut
 
 class CartMapper:
     @staticmethod
-    def _item_to_output(item: CartItem) -> CartItemOut:
+    def item_to_output(item: CartItem) -> CartItemOut:
         subtotal = item.preco_unitario_atual * item.quantidade
 
         return CartItemOut(
@@ -19,7 +19,7 @@ class CartMapper:
 
     @staticmethod
     def to_output(cart: Cart) -> CartOut:
-        items = [CartMapper._item_to_output(item) for item in cart.itens]
+        items = [CartMapper.item_to_output(item) for item in cart.itens]
         estimated_total = sum(
             (item.subtotal for item in items),
             start=Decimal("0.00"),
