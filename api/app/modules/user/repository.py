@@ -25,6 +25,18 @@ class UserRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
+    async def get_address_by_id_and_user_id(
+        self,
+        address_id: UUID,
+        user_id: UUID,
+    ) -> Address | None:
+        statement = select(Address).where(
+            Address.id == address_id,
+            Address.usuario_id == user_id,
+        )
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none()
+
     async def add(self, user: User) -> User:
         self.session.add(user)
         await self.session.flush()

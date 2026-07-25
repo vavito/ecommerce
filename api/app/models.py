@@ -1,4 +1,6 @@
 from app.modules.cart.models import Cart, CartItem
+from app.modules.order.models import Order, OrderItem
+from app.modules.payment.models import Payment
 from app.modules.product.models import Category, Product
 from app.modules.stock.models import Stock
 from app.modules.user.models import Address, User
@@ -10,6 +12,9 @@ __all__ = [
     "Cart",
     "CartItem",
     "Category",
+    "Order",
+    "OrderItem",
+    "Payment",
     "Product",
     "Stock",
     "User",

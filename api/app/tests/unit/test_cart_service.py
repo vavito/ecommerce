@@ -80,7 +80,7 @@ async def test_add_item_creates_item_with_current_product_price() -> None:
     service, repository, product_service, stock_service = make_service()
     cart = make_cart()
     product = make_product()
-    repository.get_open_by_user_id.return_value = cart
+    repository.get_open_by_user_id_for_update.return_value = cart
     repository.get_item_by_product_id.return_value = None
     repository.add_item.side_effect = lambda item: item
     product_service.get_product.return_value = product
@@ -91,6 +91,8 @@ async def test_add_item_creates_item_with_current_product_price() -> None:
     assert result.produto_id == product.id
     assert result.quantidade == 2
     assert result.preco_unitario_atual == product.preco
+    repository.get_open_by_user_id_for_update.assert_awaited_once_with(cart.usuario_id)
+    repository.get_open_by_user_id.assert_not_awaited()
     stock_service.ensure_sellable.assert_awaited_once_with(product, 2)
     repository.add_item.assert_awaited_once_with(result)
 
@@ -106,7 +108,7 @@ async def test_add_existing_product_increases_quantity_and_validates_total() -> 
         quantidade=3,
         preco_unitario_atual=Decimal("289.90"),
     )
-    repository.get_open_by_user_id.return_value = cart
+    repository.get_open_by_user_id_for_update.return_value = cart
     repository.get_item_by_product_id.return_value = item
     repository.update_item.return_value = item
     product_service.get_product.return_value = product
@@ -116,6 +118,7 @@ async def test_add_existing_product_increases_quantity_and_validates_total() -> 
     assert result is item
     assert result.quantidade == 5
     assert result.preco_unitario_atual == product.preco
+    repository.get_open_by_user_id_for_update.assert_awaited_once_with(cart.usuario_id)
     stock_service.ensure_sellable.assert_awaited_once_with(product, 5)
     repository.add_item.assert_not_awaited()
     repository.update_item.assert_awaited_once_with(item)
@@ -132,7 +135,7 @@ async def test_update_item_quantity_validates_ownership_product_and_stock() -> N
         quantidade=1,
         preco_unitario_atual=Decimal("289.90"),
     )
-    repository.get_open_by_user_id.return_value = cart
+    repository.get_open_by_user_id_for_update.return_value = cart
     repository.get_item_by_id.return_value = item
     repository.update_item.return_value = item
     product_service.get_product.return_value = product
@@ -141,6 +144,7 @@ async def test_update_item_quantity_validates_ownership_product_and_stock() -> N
 
     assert result.quantidade == 4
     assert result.preco_unitario_atual == product.preco
+    repository.get_open_by_user_id_for_update.assert_awaited_once_with(cart.usuario_id)
     stock_service.ensure_sellable.assert_awaited_once_with(product, 4)
     repository.update_item.assert_awaited_once_with(item)
 
@@ -155,11 +159,12 @@ async def test_remove_item_deletes_owned_item() -> None:
         quantidade=1,
         preco_unitario_atual=Decimal("99.90"),
     )
-    repository.get_open_by_user_id.return_value = cart
+    repository.get_open_by_user_id_for_update.return_value = cart
     repository.get_item_by_id.return_value = item
 
     await service.remove_item(cart.usuario_id, item.id)
 
+    repository.get_open_by_user_id_for_update.assert_awaited_once_with(cart.usuario_id)
     repository.delete_item.assert_awaited_once_with(item)
 
 
@@ -173,7 +178,7 @@ async def test_update_rejects_item_from_another_users_cart() -> None:
         quantidade=1,
         preco_unitario_atual=Decimal("99.90"),
     )
-    repository.get_open_by_user_id.return_value = cart
+    repository.get_open_by_user_id_for_update.return_value = cart
     repository.get_item_by_id.return_value = item
 
     with pytest.raises(NotFoundException) as exc_info:
@@ -196,3 +201,4 @@ async def test_cart_item_operations_reject_non_positive_quantity(
 
     assert exc_info.value.code == "INVALID_CART_ITEM_QUANTITY"
     repository.get_open_by_user_id.assert_not_awaited()
+    repository.get_open_by_user_id_for_update.assert_not_awaited()
