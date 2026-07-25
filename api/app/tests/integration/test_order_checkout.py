@@ -207,3 +207,58 @@ async def test_checkout_transaction_rolls_back_when_stock_reservation_fails() ->
             assert all(stock.quantidade_reservada == 0 for stock in stocks)
         finally:
             await session.rollback()
+
+
+async def test_checkout_snapshots_do_not_change_with_product_and_address() -> None:
+    async with async_session_maker() as session:
+        try:
+            user, address, products, _stocks, _cart = await create_checkout_data(
+                session
+            )
+            product = products[0]
+            original_product_name = product.nome
+            original_product_sku = product.sku
+            original_product_price = product.preco
+            original_address = {
+                "cep": address.cep,
+                "rua": address.rua,
+                "numero": address.numero,
+                "complemento": address.complemento,
+                "bairro": address.bairro,
+                "cidade": address.cidade,
+                "estado": address.estado,
+            }
+            order = await build_order_service(session).checkout(
+                user.id,
+                address.id,
+                PaymentMethod.PIX,
+            )
+            order_id = order.id
+            product_id = product.id
+
+            product.nome = "Produto atualizado"
+            product.sku = f"UPDATED-{uuid4().hex}"
+            product.preco = Decimal("999.90")
+            address.cep = "20040002"
+            address.rua = "Rua atualizada"
+            address.numero = "999"
+            address.bairro = "Centro"
+            address.cidade = "Rio de Janeiro"
+            address.estado = "RJ"
+            await session.flush()
+            session.expunge_all()
+
+            saved_order = await OrderRepository(session).get_by_id(order_id)
+
+            assert saved_order is not None
+            saved_item = next(
+                item for item in saved_order.itens if item.produto_id == product_id
+            )
+            assert saved_item.nome_produto_snapshot == original_product_name
+            assert saved_item.sku_snapshot == original_product_sku
+            assert saved_item.preco_unitario_snapshot == original_product_price
+            assert saved_item.preco_total == original_product_price
+            assert saved_order.endereco_snapshot == original_address
+            assert saved_order.valor_produtos == Decimal("280.00")
+        finally:
+            await session.rollback()
