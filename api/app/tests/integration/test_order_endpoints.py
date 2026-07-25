@@ -21,6 +21,40 @@ from app.modules.stock.models import Stock
 from app.modules.user.models import Address, User
 
 
+def make_order(
+    user_id: UUID,
+    product: Product,
+    address: Address,
+    *,
+    shipping_amount: Decimal = Decimal("0.00"),
+) -> Order:
+    return Order(
+        usuario_id=user_id,
+        valor_produtos=product.preco,
+        valor_frete=shipping_amount,
+        valor_total=product.preco + shipping_amount,
+        endereco_snapshot={
+            "cep": address.cep,
+            "rua": address.rua,
+            "numero": address.numero,
+            "complemento": address.complemento,
+            "bairro": address.bairro,
+            "cidade": address.cidade,
+            "estado": address.estado,
+        },
+        itens=[
+            OrderItem(
+                produto_id=product.id,
+                nome_produto_snapshot=product.nome,
+                sku_snapshot=product.sku,
+                quantidade=1,
+                preco_unitario_snapshot=product.preco,
+                preco_total=product.preco,
+            )
+        ],
+    )
+
+
 @pytest.fixture
 async def checkout_endpoint_data() -> AsyncGenerator[
     tuple[AsyncSession, User, str, Address, Product, Stock, Cart],
@@ -197,34 +231,14 @@ async def test_list_orders_returns_authenticated_users_paginated_history(
 ) -> None:
     session, user, token, address, product, _stock, _cart = checkout_endpoint_data
     repository = OrderRepository(session)
-    address_snapshot = {
-        "cep": address.cep,
-        "rua": address.rua,
-        "numero": address.numero,
-        "complemento": address.complemento,
-        "bairro": address.bairro,
-        "cidade": address.cidade,
-        "estado": address.estado,
-    }
 
     for shipping_amount in (Decimal("0.00"), Decimal("10.00")):
         await repository.add(
-            Order(
-                usuario_id=user.id,
-                valor_produtos=product.preco,
-                valor_frete=shipping_amount,
-                valor_total=product.preco + shipping_amount,
-                endereco_snapshot=address_snapshot,
-                itens=[
-                    OrderItem(
-                        produto_id=product.id,
-                        nome_produto_snapshot=product.nome,
-                        sku_snapshot=product.sku,
-                        quantidade=1,
-                        preco_unitario_snapshot=product.preco,
-                        preco_total=product.preco,
-                    )
-                ],
+            make_order(
+                user.id,
+                product,
+                address,
+                shipping_amount=shipping_amount,
             )
         )
     await session.commit()
@@ -246,7 +260,11 @@ async def test_list_orders_returns_authenticated_users_paginated_history(
                 valor_produtos=product.preco,
                 valor_frete=Decimal("0.00"),
                 valor_total=product.preco,
-                endereco_snapshot=address_snapshot,
+                endereco_snapshot=make_order(
+                    other_user.id,
+                    product,
+                    address,
+                ).endereco_snapshot,
                 itens=[],
             )
         )
@@ -278,6 +296,119 @@ async def test_list_orders_requires_access_token() -> None:
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/orders")
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
+
+
+async def test_get_order_returns_owned_order_details(
+    checkout_endpoint_data: tuple[
+        AsyncSession,
+        User,
+        str,
+        Address,
+        Product,
+        Stock,
+        Cart,
+    ],
+) -> None:
+    session, user, token, address, product, _stock, _cart = checkout_endpoint_data
+    order = await OrderRepository(session).add(make_order(user.id, product, address))
+    await session.commit()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            f"/orders/{order.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["id"] == str(order.id)
+    assert body["usuario_id"] == str(user.id)
+    assert body["valor_total"] == "149.90"
+    assert body["endereco_snapshot"]["cep"] == address.cep
+    assert len(body["itens"]) == 1
+    assert body["itens"][0]["produto_id"] == str(product.id)
+
+
+async def test_get_order_hides_order_from_another_user(
+    checkout_endpoint_data: tuple[
+        AsyncSession,
+        User,
+        str,
+        Address,
+        Product,
+        Stock,
+        Cart,
+    ],
+) -> None:
+    session, _user, token, address, product, _stock, _cart = checkout_endpoint_data
+    nested_transaction = await session.begin_nested()
+    try:
+        unique_value = uuid4().hex
+        other_user = User(
+            nome="Maria",
+            email=f"maria-order-detail-{unique_value}@example.com",
+            cpf=unique_value[:11],
+            senha_hash="hash",
+        )
+        session.add(other_user)
+        await session.flush()
+        order = await OrderRepository(session).add(
+            make_order(other_user.id, product, address)
+        )
+        transport = ASGITransport(app=app)
+
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(
+                f"/orders/{order.id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    finally:
+        await nested_transaction.rollback()
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "code": "ORDER_NOT_FOUND",
+        "message": "Pedido nao encontrado.",
+        "details": {"order_id": str(order.id)},
+    }
+
+
+async def test_get_order_returns_not_found_for_unknown_id(
+    checkout_endpoint_data: tuple[
+        AsyncSession,
+        User,
+        str,
+        Address,
+        Product,
+        Stock,
+        Cart,
+    ],
+) -> None:
+    _session, _user, token, _address, _product, _stock, _cart = checkout_endpoint_data
+    order_id = uuid4()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            f"/orders/{order_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "ORDER_NOT_FOUND"
+
+
+async def test_get_order_requires_access_token() -> None:
+    order_id = uuid4()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/orders/{order_id}")
 
     assert response.status_code == 401
     assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
