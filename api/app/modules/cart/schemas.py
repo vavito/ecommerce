@@ -12,6 +12,10 @@ class CartItemCreate(BaseModel):
     quantidade: int = Field(gt=0)
 
 
+class CartItemUpdate(BaseModel):
+    quantidade: int = Field(gt=0)
+
+
 class CartItemOut(BaseModel):
     id: UUID
     produto_id: UUID
