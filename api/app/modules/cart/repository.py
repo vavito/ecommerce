@@ -15,11 +15,24 @@ class CartRepository:
     async def get_open_by_user_id(self, user_id: UUID) -> Cart | None:
         statement = (
             select(Cart)
-            .options(selectinload(Cart.itens))
+            .options(selectinload(Cart.itens).selectinload(CartItem.produto))
             .where(
                 Cart.usuario_id == user_id,
                 Cart.status == CartStatus.OPEN,
             )
+        )
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none()
+
+    async def get_open_by_user_id_for_update(self, user_id: UUID) -> Cart | None:
+        statement = (
+            select(Cart)
+            .options(selectinload(Cart.itens).selectinload(CartItem.produto))
+            .where(
+                Cart.usuario_id == user_id,
+                Cart.status == CartStatus.OPEN,
+            )
+            .with_for_update()
         )
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
@@ -43,6 +56,10 @@ class CartRepository:
 
     async def add(self, cart: Cart) -> Cart:
         self.session.add(cart)
+        await self.session.flush()
+        return cart
+
+    async def update(self, cart: Cart) -> Cart:
         await self.session.flush()
         return cart
 
