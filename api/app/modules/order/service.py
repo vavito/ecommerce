@@ -151,3 +151,18 @@ class OrderService:
             offset=offset,
             limit=limit,
         )
+
+    async def get_order(self, user_id: UUID, order_id: UUID) -> Order:
+        order = await self.repository.get_by_id_and_user_id(
+            order_id,
+            user_id,
+        )
+
+        if order is None:
+            raise NotFoundException(
+                code="ORDER_NOT_FOUND",
+                message="Pedido nao encontrado.",
+                details={"order_id": str(order_id)},
+            )
+
+        return order
