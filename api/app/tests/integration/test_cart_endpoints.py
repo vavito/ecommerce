@@ -104,6 +104,38 @@ async def stocked_cart_product(
         await session.commit()
 
 
+async def create_item_for_other_user(
+    session: AsyncSession,
+    product: Product,
+) -> tuple[UUID, UUID]:
+    unique_value = uuid4()
+    other_user = User(
+        nome="Maria",
+        email=f"maria-cart-{unique_value.hex}@example.com",
+        cpf=f"{unique_value.int % 100_000_000_000:011d}",
+        senha_hash="hash",
+        ativo=True,
+    )
+    session.add(other_user)
+    await session.flush()
+    other_cart = Cart(
+        usuario_id=other_user.id,
+        status=CartStatus.OPEN,
+    )
+    session.add(other_cart)
+    await session.flush()
+    other_item = CartItem(
+        carrinho_id=other_cart.id,
+        produto_id=product.id,
+        quantidade=1,
+        preco_unitario_atual=product.preco,
+    )
+    session.add(other_item)
+    await session.flush()
+
+    return other_user.id, other_item.id
+
+
 async def test_get_cart_creates_and_returns_empty_cart(
     authenticated_cart_user: tuple[AsyncSession, User, str],
 ) -> None:
@@ -363,33 +395,10 @@ async def test_update_cart_item_rejects_item_from_another_user(
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.get("/cart", headers=headers)
-
-        unique_value = uuid4()
-        other_user = User(
-            nome="Maria",
-            email=f"maria-cart-{unique_value.hex}@example.com",
-            cpf=f"{unique_value.int % 100_000_000_000:011d}",
-            senha_hash=hash_password("senha123"),
-            ativo=True,
+        other_user_id, other_item_id = await create_item_for_other_user(
+            session,
+            product,
         )
-        session.add(other_user)
-        await session.flush()
-        other_cart = Cart(
-            usuario_id=other_user.id,
-            status=CartStatus.OPEN,
-        )
-        session.add(other_cart)
-        await session.flush()
-        other_item = CartItem(
-            carrinho_id=other_cart.id,
-            produto_id=product.id,
-            quantidade=1,
-            preco_unitario_atual=product.preco,
-        )
-        session.add(other_item)
-        await session.flush()
-        other_user_id = other_user.id
-        other_item_id = other_item.id
 
         response = await client.patch(
             f"/cart/items/{other_item_id}",
@@ -418,6 +427,77 @@ async def test_update_cart_item_requires_access_token() -> None:
             f"/cart/items/{item_id}",
             json={"quantidade": 2},
         )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
+
+
+async def test_delete_cart_item_removes_item_and_updates_cart(
+    stocked_cart_product: tuple[AsyncSession, User, str, Product, Stock],
+) -> None:
+    session, _user, token, product, _stock = stocked_cart_product
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        create_response = await client.post(
+            "/cart/items",
+            json={
+                "produto_id": str(product.id),
+                "quantidade": 2,
+            },
+            headers=headers,
+        )
+        item_id = create_response.json()["id"]
+        response = await client.delete(
+            f"/cart/items/{item_id}",
+            headers=headers,
+        )
+        cart_response = await client.get("/cart", headers=headers)
+
+    saved_item = await CartRepository(session).get_item_by_id(UUID(item_id))
+
+    assert create_response.status_code == 201
+    assert response.status_code == 204
+    assert response.content == b""
+    assert saved_item is None
+    assert cart_response.status_code == 200
+    assert cart_response.json()["itens"] == []
+    assert cart_response.json()["total_estimado"] == "0.00"
+
+
+async def test_delete_cart_item_rejects_item_from_another_user(
+    stocked_cart_product: tuple[AsyncSession, User, str, Product, Stock],
+) -> None:
+    session, _user, token, product, _stock = stocked_cart_product
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.get("/cart", headers=headers)
+        other_user_id, other_item_id = await create_item_for_other_user(
+            session,
+            product,
+        )
+
+        response = await client.delete(
+            f"/cart/items/{other_item_id}",
+            headers=headers,
+        )
+
+    await session.rollback()
+    await session.execute(delete(User).where(User.id == other_user_id))
+    await session.commit()
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "CART_ITEM_NOT_FOUND"
+
+
+async def test_delete_cart_item_requires_access_token() -> None:
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.delete(f"/cart/items/{uuid4()}")
 
     assert response.status_code == 401
     assert response.json()["code"] == "AUTHENTICATION_REQUIRED"

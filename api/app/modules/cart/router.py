@@ -91,3 +91,18 @@ async def update_cart_item(
     await session.refresh(item)
 
     return CartMapper.item_to_output(item)
+
+
+@router.delete(
+    "/cart/items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_cart_item(
+    item_id: UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> None:
+    service = _build_cart_service(session)
+    await service.remove_item(current_user.id, item_id)
+
+    await session.commit()
