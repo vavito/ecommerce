@@ -44,6 +44,17 @@ class CartService:
         if cart is not None:
             return cart
 
+        return await self._create_open_cart(user_id)
+
+    async def _get_or_create_open_cart_for_update(self, user_id: UUID) -> Cart:
+        cart = await self.repository.get_open_by_user_id_for_update(user_id)
+
+        if cart is not None:
+            return cart
+
+        return await self._create_open_cart(user_id)
+
+    async def _create_open_cart(self, user_id: UUID) -> Cart:
         return await self.repository.add(
             Cart(
                 usuario_id=user_id,
@@ -53,7 +64,7 @@ class CartService:
         )
 
     async def _get_owned_item(self, user_id: UUID, item_id: UUID) -> CartItem:
-        cart = await self.repository.get_open_by_user_id(user_id)
+        cart = await self.repository.get_open_by_user_id_for_update(user_id)
         item = await self.repository.get_item_by_id(item_id)
 
         if cart is None or item is None or item.carrinho_id != cart.id:
@@ -77,7 +88,7 @@ class CartService:
         quantity: int,
     ) -> CartItem:
         self._validate_quantity(quantity)
-        cart = await self.get_or_create_open_cart(user_id)
+        cart = await self._get_or_create_open_cart_for_update(user_id)
         existing_item = await self.repository.get_item_by_product_id(
             cart.id,
             product_id,
