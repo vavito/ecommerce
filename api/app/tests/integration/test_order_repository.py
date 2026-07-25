@@ -113,6 +113,14 @@ async def test_order_repository_persists_and_finds_orders() -> None:
             session.expunge_all()
 
             found_order = await repository.get_by_id(order_id)
+            owned_order = await repository.get_by_id_and_user_id(
+                order_id,
+                user_id,
+            )
+            other_users_order = await repository.get_by_id_and_user_id(
+                order_id,
+                other_user.id,
+            )
             user_orders, total = await repository.list_by_user_id(
                 user_id,
                 offset=0,
@@ -122,6 +130,9 @@ async def test_order_repository_persists_and_finds_orders() -> None:
             assert created_order.id == order_id
             assert found_order is not None
             assert found_order.id == order_id
+            assert owned_order is not None
+            assert owned_order.id == order_id
+            assert other_users_order is None
             assert len(found_order.itens) == 2
             assert {item.nome_produto_snapshot for item in found_order.itens} == {
                 "Teclado mecanico",
@@ -139,8 +150,11 @@ async def test_order_repository_returns_empty_results_when_orders_do_not_exist()
 ):
     async with async_session_maker() as session:
         repository = OrderRepository(session)
+        order_id = uuid4()
+        user_id = uuid4()
 
-        assert await repository.get_by_id(uuid4()) is None
+        assert await repository.get_by_id(order_id) is None
+        assert await repository.get_by_id_and_user_id(order_id, user_id) is None
         orders, total = await repository.list_by_user_id(uuid4())
 
         assert orders == []
