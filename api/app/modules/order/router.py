@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -13,7 +13,7 @@ from app.modules.user.repository import UserRepository
 
 from .mapper import OrderMapper
 from .repository import OrderRepository
-from .schemas import CheckoutRequest, OrderOut
+from .schemas import CheckoutRequest, OrderListOut, OrderOut
 from .service import OrderService
 
 router = APIRouter(
@@ -54,3 +54,28 @@ async def checkout(
     await session.commit()
 
     return OrderMapper.to_output(order)
+
+
+@router.get(
+    "",
+    response_model=OrderListOut,
+)
+async def list_orders(
+    current_user: CurrentUser,
+    session: SessionDep,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> OrderListOut:
+    service = _build_order_service(session)
+    orders, total = await service.list_orders(
+        current_user.id,
+        offset=offset,
+        limit=limit,
+    )
+
+    return OrderListOut(
+        items=[OrderMapper.to_output(order) for order in orders],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
