@@ -218,6 +218,73 @@ async def test_checkout_endpoint_requires_access_token() -> None:
     }
 
 
+async def test_checkout_flow_preserves_snapshots_after_source_changes(
+    checkout_endpoint_data: tuple[
+        AsyncSession,
+        User,
+        str,
+        Address,
+        Product,
+        Stock,
+        Cart,
+    ],
+) -> None:
+    session, _user, token, address, product, _stock, _cart = checkout_endpoint_data
+    original_product_name = product.nome
+    original_product_sku = product.sku
+    original_address = {
+        "cep": address.cep,
+        "rua": address.rua,
+        "numero": address.numero,
+        "complemento": address.complemento,
+        "bairro": address.bairro,
+        "cidade": address.cidade,
+        "estado": address.estado,
+    }
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        checkout_response = await client.post(
+            "/orders/checkout",
+            json={
+                "endereco_id": str(address.id),
+                "metodo_pagamento": "PIX",
+            },
+            headers=headers,
+        )
+        order_id = checkout_response.json()["id"]
+
+        product.nome = "Produto atualizado"
+        product.sku = f"HIST-{uuid4().hex}"
+        product.preco = Decimal("999.90")
+        address.cep = "20040002"
+        address.rua = "Rua atualizada"
+        address.numero = "999"
+        address.bairro = "Centro"
+        address.cidade = "Rio de Janeiro"
+        address.estado = "RJ"
+        await session.commit()
+
+        detail_response = await client.get(
+            f"/orders/{order_id}",
+            headers=headers,
+        )
+
+    detail = detail_response.json()
+    saved_item = detail["itens"][0]
+
+    assert checkout_response.status_code == 201
+    assert detail_response.status_code == 200
+    assert detail["valor_produtos"] == "299.80"
+    assert detail["valor_total"] == "299.80"
+    assert detail["endereco_snapshot"] == original_address
+    assert saved_item["nome_produto_snapshot"] == original_product_name
+    assert saved_item["sku_snapshot"] == original_product_sku
+    assert saved_item["preco_unitario_snapshot"] == "149.90"
+    assert saved_item["preco_total"] == "299.80"
+
+
 async def test_list_orders_returns_authenticated_users_paginated_history(
     checkout_endpoint_data: tuple[
         AsyncSession,
