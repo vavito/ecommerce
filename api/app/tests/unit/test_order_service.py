@@ -8,6 +8,7 @@ from app.modules.cart.enums import CartStatus
 from app.modules.cart.models import Cart, CartItem
 from app.modules.cart.repository import CartRepository
 from app.modules.order.enums import OrderStatus
+from app.modules.order.models import Order
 from app.modules.order.repository import OrderRepository
 from app.modules.order.service import OrderService
 from app.modules.payment.enums import PaymentMethod, PaymentStatus
@@ -279,3 +280,44 @@ async def test_list_orders_delegates_user_and_pagination_to_repository() -> None
         offset=20,
         limit=10,
     )
+
+
+async def test_get_order_returns_order_owned_by_user() -> None:
+    service, repository, _cart_repository, _stock_service, _user_repository = (
+        make_service()
+    )
+    user_id = uuid4()
+    order = Order(
+        id=uuid4(),
+        usuario_id=user_id,
+        status=OrderStatus.PENDING_PAYMENT,
+        valor_produtos=Decimal("100.00"),
+        valor_frete=Decimal("0.00"),
+        valor_total=Decimal("100.00"),
+        endereco_snapshot={},
+        itens=[],
+    )
+    repository.get_by_id_and_user_id.return_value = order
+
+    result = await service.get_order(user_id, order.id)
+
+    assert result is order
+    repository.get_by_id_and_user_id.assert_awaited_once_with(
+        order.id,
+        user_id,
+    )
+
+
+async def test_get_order_hides_missing_or_other_users_order() -> None:
+    service, repository, _cart_repository, _stock_service, _user_repository = (
+        make_service()
+    )
+    user_id = uuid4()
+    order_id = uuid4()
+    repository.get_by_id_and_user_id.return_value = None
+
+    with pytest.raises(NotFoundException) as exc_info:
+        await service.get_order(user_id, order_id)
+
+    assert exc_info.value.code == "ORDER_NOT_FOUND"
+    assert exc_info.value.details == {"order_id": str(order_id)}
