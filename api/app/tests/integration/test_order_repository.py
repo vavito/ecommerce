@@ -113,7 +113,11 @@ async def test_order_repository_persists_and_finds_orders() -> None:
             session.expunge_all()
 
             found_order = await repository.get_by_id(order_id)
-            user_orders = await repository.list_by_user_id(user_id)
+            user_orders, total = await repository.list_by_user_id(
+                user_id,
+                offset=0,
+                limit=20,
+            )
 
             assert created_order.id == order_id
             assert found_order is not None
@@ -125,6 +129,7 @@ async def test_order_repository_persists_and_finds_orders() -> None:
             }
             assert [listed_order.id for listed_order in user_orders] == [order_id]
             assert len(user_orders[0].itens) == 2
+            assert total == 1
         finally:
             await session.rollback()
 
@@ -136,4 +141,7 @@ async def test_order_repository_returns_empty_results_when_orders_do_not_exist()
         repository = OrderRepository(session)
 
         assert await repository.get_by_id(uuid4()) is None
-        assert await repository.list_by_user_id(uuid4()) == []
+        orders, total = await repository.list_by_user_id(uuid4())
+
+        assert orders == []
+        assert total == 0
