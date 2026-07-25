@@ -4,7 +4,14 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.modules.payment.enums import PaymentMethod
+
 from .enums import OrderStatus
+
+
+class CheckoutRequest(BaseModel):
+    endereco_id: UUID
+    metodo_pagamento: PaymentMethod
 
 
 class AddressSnapshotOut(BaseModel):
