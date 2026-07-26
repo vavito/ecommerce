@@ -244,12 +244,14 @@ async def test_webhook_processes_new_key_once(
         payment.id,
         target_status,
         " event-abc ",
+        " gateway-tx-abc ",
     )
 
     assert result is payment
     assert payment.status is target_status
     assert payment.pedido.status is expected_order_status
     assert payment.idempotency_key == "event-abc"
+    assert payment.gateway_transaction_id == "gateway-tx-abc"
     getattr(stock_service, stock_method_name).assert_has_awaits(
         [
             call(UUID(int=1), 1),
@@ -265,12 +267,14 @@ async def test_repeated_webhook_returns_processed_payment_without_new_effects() 
     payment.status = PaymentStatus.APPROVED
     payment.pedido.status = OrderStatus.PAID
     payment.idempotency_key = "event-abc"
+    payment.gateway_transaction_id = "gateway-tx-abc"
     repository.get_by_idempotency_key.return_value = payment
 
     result = await service.process_webhook(
         payment.id,
         PaymentStatus.APPROVED,
         "event-abc",
+        "gateway-tx-abc",
     )
 
     assert result is payment
@@ -285,6 +289,7 @@ async def test_concurrent_duplicate_is_rechecked_after_payment_lock() -> None:
     payment.status = PaymentStatus.APPROVED
     payment.pedido.status = OrderStatus.PAID
     payment.idempotency_key = "event-abc"
+    payment.gateway_transaction_id = "gateway-tx-abc"
     repository.get_by_idempotency_key.return_value = None
     repository.get_by_id_for_update.return_value = payment
 
@@ -292,6 +297,7 @@ async def test_concurrent_duplicate_is_rechecked_after_payment_lock() -> None:
         payment.id,
         PaymentStatus.APPROVED,
         "event-abc",
+        "gateway-tx-abc",
     )
 
     assert result is payment
@@ -310,6 +316,7 @@ async def test_idempotency_key_cannot_be_reused_for_another_payment() -> None:
             requested_payment_id,
             PaymentStatus.APPROVED,
             "event-abc",
+            "gateway-tx-abc",
         )
 
     assert exc_info.value.code == "IDEMPOTENCY_KEY_CONFLICT"
@@ -334,6 +341,7 @@ async def test_payment_cannot_replace_processed_idempotency_key() -> None:
             payment.id,
             PaymentStatus.APPROVED,
             "event-new",
+            "gateway-tx-abc",
         )
 
     assert exc_info.value.code == "IDEMPOTENCY_KEY_CONFLICT"
@@ -352,6 +360,7 @@ async def test_webhook_rejects_invalid_idempotency_key(
             uuid4(),
             PaymentStatus.APPROVED,
             idempotency_key,
+            "gateway-tx-abc",
         )
 
     assert exc_info.value.code == "INVALID_IDEMPOTENCY_KEY"
@@ -366,8 +375,27 @@ async def test_webhook_rejects_status_that_is_not_a_gateway_result() -> None:
             uuid4(),
             PaymentStatus.PENDING,
             "event-abc",
+            "gateway-tx-abc",
         )
 
     assert exc_info.value.code == "INVALID_WEBHOOK_STATUS"
     assert exc_info.value.details == {"target_status": "PENDING"}
+    repository.get_by_idempotency_key.assert_not_awaited()
+
+
+@pytest.mark.parametrize("gateway_transaction_id", ["", "   ", "x" * 101])
+async def test_webhook_rejects_invalid_gateway_transaction_id(
+    gateway_transaction_id: str,
+) -> None:
+    service, repository, _stock_service = make_service()
+
+    with pytest.raises(BusinessRuleException) as exc_info:
+        await service.process_webhook(
+            uuid4(),
+            PaymentStatus.APPROVED,
+            "event-abc",
+            gateway_transaction_id,
+        )
+
+    assert exc_info.value.code == "INVALID_GATEWAY_TRANSACTION_ID"
     repository.get_by_idempotency_key.assert_not_awaited()
