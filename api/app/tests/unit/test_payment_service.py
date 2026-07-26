@@ -139,6 +139,24 @@ async def test_payment_not_found_stops_processing() -> None:
     repository.update.assert_not_awaited()
 
 
+async def test_approve_hides_payment_from_another_user() -> None:
+    service, repository, stock_service = make_service()
+    payment = make_payment()
+    repository.get_by_id_for_update.return_value = payment
+    other_user_id = uuid4()
+
+    with pytest.raises(NotFoundException) as exc_info:
+        await service.approve(
+            payment.id,
+            user_id=other_user_id,
+        )
+
+    assert exc_info.value.code == "PAYMENT_NOT_FOUND"
+    assert exc_info.value.details == {"payment_id": str(payment.id)}
+    stock_service.confirm_reservation.assert_not_awaited()
+    repository.update.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     ("method_name", "current_status", "target_status"),
     [
