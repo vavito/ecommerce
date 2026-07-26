@@ -23,6 +23,18 @@ class PaymentRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
+    async def get_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> Payment | None:
+        statement = (
+            select(Payment)
+            .options(selectinload(Payment.pedido).selectinload(Order.itens))
+            .where(Payment.idempotency_key == idempotency_key)
+        )
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none()
+
     async def update(self, payment: Payment) -> Payment:
         await self.session.flush()
         return payment
