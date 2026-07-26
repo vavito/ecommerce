@@ -294,3 +294,91 @@ async def test_refuse_payment_endpoint_requires_access_token() -> None:
 
     assert response.status_code == 401
     assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
+
+
+async def test_mock_webhook_approves_payment_idempotently(
+    payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
+) -> None:
+    session, _user, _token, payment, order, stock = payment_endpoint_data
+    transport = ASGITransport(app=app)
+    request = {
+        "payment_id": str(payment.id),
+        "status": "APPROVED",
+        "gateway_transaction_id": "gateway-tx-approved",
+    }
+    headers = {"Idempotency-Key": "event-approved"}
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first_response = await client.post(
+            "/payments/webhook/mock",
+            json=request,
+            headers=headers,
+        )
+        second_response = await client.post(
+            "/payments/webhook/mock",
+            json=request,
+            headers=headers,
+        )
+
+    await session.refresh(order)
+    await session.refresh(stock)
+    await session.refresh(payment)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json() == first_response.json()
+    assert first_response.json()["status"] == "APPROVED"
+    assert first_response.json()["gateway_transaction_id"] == "gateway-tx-approved"
+    assert payment.status is PaymentStatus.APPROVED
+    assert payment.idempotency_key == "event-approved"
+    assert order.status is OrderStatus.PAID
+    assert stock.quantidade == 8
+    assert stock.quantidade_reservada == 0
+
+
+async def test_mock_webhook_refuses_payment_and_releases_reservation(
+    payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
+) -> None:
+    session, _user, _token, payment, order, stock = payment_endpoint_data
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/payments/webhook/mock",
+            json={
+                "payment_id": str(payment.id),
+                "status": "REFUSED",
+                "gateway_transaction_id": "gateway-tx-refused",
+            },
+            headers={"Idempotency-Key": "event-refused"},
+        )
+
+    await session.refresh(order)
+    await session.refresh(stock)
+    await session.refresh(payment)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "REFUSED"
+    assert payment.status is PaymentStatus.REFUSED
+    assert payment.idempotency_key == "event-refused"
+    assert order.status is OrderStatus.CANCELED
+    assert stock.quantidade == 10
+    assert stock.quantidade_reservada == 0
+    assert stock.quantidade_disponivel == 10
+
+
+async def test_mock_webhook_requires_idempotency_key_header() -> None:
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/payments/webhook/mock",
+            json={
+                "payment_id": str(uuid4()),
+                "status": "APPROVED",
+                "gateway_transaction_id": "gateway-tx-missing-header",
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
