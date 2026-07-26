@@ -111,6 +111,15 @@ class PaymentService:
 
         return payment
 
+    @staticmethod
+    def _ensure_payment_owner(payment: Payment, user_id: UUID) -> None:
+        if payment.pedido.usuario_id != user_id:
+            raise NotFoundException(
+                code="PAYMENT_NOT_FOUND",
+                message="Pagamento nao encontrado.",
+                details={"payment_id": str(payment.id)},
+            )
+
     async def _approve_payment(self, payment: Payment) -> None:
         self._ensure_transition(payment, PaymentStatus.APPROVED)
 
@@ -123,8 +132,17 @@ class PaymentService:
         payment.status = PaymentStatus.APPROVED
         payment.pedido.status = OrderStatus.PAID
 
-    async def approve(self, payment_id: UUID) -> Payment:
+    async def approve(
+        self,
+        payment_id: UUID,
+        *,
+        user_id: UUID | None = None,
+    ) -> Payment:
         payment = await self._get_payment_for_update(payment_id)
+
+        if user_id is not None:
+            self._ensure_payment_owner(payment, user_id)
+
         await self._approve_payment(payment)
         return await self.repository.update(payment)
 
