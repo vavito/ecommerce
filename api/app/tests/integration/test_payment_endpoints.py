@@ -230,3 +230,67 @@ async def test_approve_payment_endpoint_requires_access_token() -> None:
 
     assert response.status_code == 401
     assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
+
+
+async def test_refuse_payment_endpoint_releases_reservation_and_cancels_order(
+    payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
+) -> None:
+    session, _user, token, payment, order, stock = payment_endpoint_data
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            f"/payments/{payment.id}/refuse",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    await session.refresh(order)
+    await session.refresh(stock)
+    await session.refresh(payment)
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["id"] == str(payment.id)
+    assert body["pedido_id"] == str(order.id)
+    assert body["status"] == "REFUSED"
+    assert payment.status is PaymentStatus.REFUSED
+    assert order.status is OrderStatus.CANCELED
+    assert stock.quantidade == 10
+    assert stock.quantidade_reservada == 0
+    assert stock.quantidade_disponivel == 10
+
+
+async def test_refuse_payment_endpoint_rejects_second_refusal(
+    payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
+) -> None:
+    session, _user, token, payment, _order, stock = payment_endpoint_data
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first_response = await client.post(
+            f"/payments/{payment.id}/refuse",
+            headers=headers,
+        )
+        second_response = await client.post(
+            f"/payments/{payment.id}/refuse",
+            headers=headers,
+        )
+
+    await session.refresh(stock)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert second_response.json()["code"] == "INVALID_PAYMENT_TRANSITION"
+    assert stock.quantidade == 10
+    assert stock.quantidade_reservada == 0
+
+
+async def test_refuse_payment_endpoint_requires_access_token() -> None:
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(f"/payments/{uuid4()}/refuse")
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "AUTHENTICATION_REQUIRED"
