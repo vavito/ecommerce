@@ -158,8 +158,17 @@ class PaymentService:
         payment.status = PaymentStatus.REFUSED
         payment.pedido.status = OrderStatus.CANCELED
 
-    async def refuse(self, payment_id: UUID) -> Payment:
+    async def refuse(
+        self,
+        payment_id: UUID,
+        *,
+        user_id: UUID | None = None,
+    ) -> Payment:
         payment = await self._get_payment_for_update(payment_id)
+
+        if user_id is not None:
+            self._ensure_payment_owner(payment, user_id)
+
         await self._refuse_payment(payment)
         return await self.repository.update(payment)
 
