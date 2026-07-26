@@ -77,6 +77,20 @@ class PaymentService:
         return normalized_key
 
     @staticmethod
+    def _normalize_gateway_transaction_id(
+        gateway_transaction_id: str,
+    ) -> str:
+        normalized_transaction_id = gateway_transaction_id.strip()
+
+        if not normalized_transaction_id or len(normalized_transaction_id) > 100:
+            raise BusinessRuleException(
+                code="INVALID_GATEWAY_TRANSACTION_ID",
+                message="Gateway transaction id invalido.",
+            )
+
+        return normalized_transaction_id
+
+    @staticmethod
     def _ensure_webhook_status(target_status: PaymentStatus) -> None:
         if target_status not in _WEBHOOK_TARGET_STATUSES:
             raise BusinessRuleException(
@@ -98,6 +112,22 @@ class PaymentService:
                 "idempotency_key": idempotency_key,
             },
         )
+
+    @staticmethod
+    def _ensure_same_processed_event(
+        payment: Payment,
+        payment_id: UUID,
+        idempotency_key: str,
+        gateway_transaction_id: str,
+    ) -> None:
+        if (
+            payment.id != payment_id
+            or payment.gateway_transaction_id != gateway_transaction_id
+        ):
+            PaymentService._raise_idempotency_conflict(
+                payment_id,
+                idempotency_key,
+            )
 
     async def _get_payment_for_update(self, payment_id: UUID) -> Payment:
         payment = await self.repository.get_by_id_for_update(payment_id)
@@ -194,23 +224,44 @@ class PaymentService:
         payment_id: UUID,
         target_status: PaymentStatus,
         idempotency_key: str,
+        gateway_transaction_id: str,
     ) -> Payment:
         normalized_key = self._normalize_idempotency_key(idempotency_key)
+        normalized_transaction_id = self._normalize_gateway_transaction_id(
+            gateway_transaction_id
+        )
         self._ensure_webhook_status(target_status)
         processed_payment = await self.repository.get_by_idempotency_key(normalized_key)
 
         if processed_payment is not None:
-            if processed_payment.id != payment_id:
-                self._raise_idempotency_conflict(payment_id, normalized_key)
+            self._ensure_same_processed_event(
+                processed_payment,
+                payment_id,
+                normalized_key,
+                normalized_transaction_id,
+            )
             return processed_payment
 
         payment = await self._get_payment_for_update(payment_id)
 
         if payment.idempotency_key == normalized_key:
+            self._ensure_same_processed_event(
+                payment,
+                payment_id,
+                normalized_key,
+                normalized_transaction_id,
+            )
             return payment
 
         if payment.idempotency_key is not None:
             self._raise_idempotency_conflict(payment_id, normalized_key)
+
+        if payment.gateway_transaction_id not in (None, normalized_transaction_id):
+            raise ConflictException(
+                code="GATEWAY_TRANSACTION_CONFLICT",
+                message="Pagamento ja vinculado a outra transacao do gateway.",
+                details={"payment_id": str(payment_id)},
+            )
 
         if target_status is PaymentStatus.APPROVED:
             await self._approve_payment(payment)
@@ -218,4 +269,5 @@ class PaymentService:
             await self._refuse_payment(payment)
 
         payment.idempotency_key = normalized_key
+        payment.gateway_transaction_id = normalized_transaction_id
         return await self.repository.update(payment)
