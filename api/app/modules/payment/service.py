@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from app.modules.order.enums import OrderStatus
 from app.modules.order.models import OrderItem
 from app.modules.stock.service import StockService
@@ -131,6 +133,45 @@ class PaymentService:
                 idempotency_key,
             )
 
+    @staticmethod
+    def _raise_gateway_transaction_conflict(payment_id: UUID) -> None:
+        raise ConflictException(
+            code="GATEWAY_TRANSACTION_CONFLICT",
+            message="Transacao do gateway ja vinculada a outro pagamento.",
+            details={"payment_id": str(payment_id)},
+        )
+
+    async def _recover_webhook_integrity_error(
+        self,
+        payment_id: UUID,
+        target_status: PaymentStatus,
+        idempotency_key: str,
+        gateway_transaction_id: str,
+        error: IntegrityError,
+    ) -> Payment:
+        await self.repository.rollback()
+
+        processed_payment = await self.repository.get_by_idempotency_key(
+            idempotency_key
+        )
+        if processed_payment is not None:
+            self._ensure_same_processed_event(
+                processed_payment,
+                payment_id,
+                target_status,
+                idempotency_key,
+                gateway_transaction_id,
+            )
+            return processed_payment
+
+        gateway_payment = await self.repository.get_by_gateway_transaction_id(
+            gateway_transaction_id
+        )
+        if gateway_payment is not None:
+            self._raise_gateway_transaction_conflict(payment_id)
+
+        raise error
+
     async def _get_payment_for_update(self, payment_id: UUID) -> Payment:
         payment = await self.repository.get_by_id_for_update(payment_id)
 
@@ -261,11 +302,7 @@ class PaymentService:
             self._raise_idempotency_conflict(payment_id, normalized_key)
 
         if payment.gateway_transaction_id not in (None, normalized_transaction_id):
-            raise ConflictException(
-                code="GATEWAY_TRANSACTION_CONFLICT",
-                message="Pagamento ja vinculado a outra transacao do gateway.",
-                details={"payment_id": str(payment_id)},
-            )
+            self._raise_gateway_transaction_conflict(payment_id)
 
         if target_status is PaymentStatus.APPROVED:
             await self._approve_payment(payment)
@@ -274,4 +311,14 @@ class PaymentService:
 
         payment.idempotency_key = normalized_key
         payment.gateway_transaction_id = normalized_transaction_id
-        return await self.repository.update(payment)
+
+        try:
+            return await self.repository.update(payment)
+        except IntegrityError as error:
+            return await self._recover_webhook_integrity_error(
+                payment_id,
+                target_status,
+                normalized_key,
+                normalized_transaction_id,
+                error,
+            )

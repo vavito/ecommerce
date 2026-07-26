@@ -1,6 +1,7 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,17 +15,20 @@ from app.modules.cart.enums import CartStatus
 from app.modules.cart.models import Cart, CartItem
 from app.modules.cart.repository import CartRepository
 from app.modules.order.enums import OrderStatus
-from app.modules.order.models import Order
+from app.modules.order.models import Order, OrderItem
 from app.modules.order.repository import OrderRepository
 from app.modules.order.service import OrderService
 from app.modules.payment.enums import PaymentMethod, PaymentStatus
 from app.modules.payment.models import Payment
+from app.modules.payment.repository import PaymentRepository
+from app.modules.payment.service import PaymentService
 from app.modules.product.models import Category, Product
 from app.modules.stock.models import Stock
 from app.modules.stock.repository import StockRepository
 from app.modules.stock.service import StockService
 from app.modules.user.models import Address, User
 from app.modules.user.repository import UserRepository
+from app.shared.exceptions import ConflictException
 
 
 @pytest.fixture
@@ -422,3 +426,131 @@ async def test_mock_webhook_requires_idempotency_key_header() -> None:
 
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+async def test_concurrent_webhook_key_reuse_rolls_back_losing_payment(
+    payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
+) -> None:
+    session, user, _token, first_payment, first_order, stock = payment_endpoint_data
+    first_item = first_order.itens[0]
+    second_payment = Payment(
+        metodo=PaymentMethod.PIX,
+        status=PaymentStatus.PENDING,
+        valor=first_order.valor_total,
+        gateway="MOCK",
+    )
+    second_order = Order(
+        usuario_id=user.id,
+        status=OrderStatus.PENDING_PAYMENT,
+        valor_produtos=first_order.valor_produtos,
+        valor_frete=first_order.valor_frete,
+        valor_total=first_order.valor_total,
+        endereco_snapshot=first_order.endereco_snapshot,
+        itens=[
+            OrderItem(
+                produto_id=first_item.produto_id,
+                nome_produto_snapshot=first_item.nome_produto_snapshot,
+                sku_snapshot=first_item.sku_snapshot,
+                quantidade=first_item.quantidade,
+                preco_unitario_snapshot=first_item.preco_unitario_snapshot,
+                preco_total=first_item.preco_total,
+            )
+        ],
+        pagamento=second_payment,
+    )
+    stock.quantidade_reservada += first_item.quantidade
+    session.add(second_order)
+    await session.commit()
+
+    second_payment_id = second_payment.id
+    second_order_id = second_order.id
+    barrier = asyncio.Barrier(2)
+
+    class SynchronizedPaymentRepository(PaymentRepository):
+        def __init__(self, worker_session: AsyncSession) -> None:
+            super().__init__(worker_session)
+            self.first_idempotency_lookup = True
+
+        async def get_by_idempotency_key(
+            self,
+            idempotency_key: str,
+        ) -> Payment | None:
+            payment = await super().get_by_idempotency_key(idempotency_key)
+
+            if self.first_idempotency_lookup:
+                self.first_idempotency_lookup = False
+                await barrier.wait()
+
+            return payment
+
+    async def process(payment_id: UUID) -> str:
+        async with async_session_maker() as worker_session:
+            service = PaymentService(
+                SynchronizedPaymentRepository(worker_session),
+                StockService(StockRepository(worker_session)),
+            )
+
+            try:
+                await service.process_webhook(
+                    payment_id,
+                    PaymentStatus.APPROVED,
+                    "event-concurrent",
+                    "gateway-tx-concurrent",
+                )
+                await worker_session.commit()
+                return "APPROVED"
+            except ConflictException as exc:
+                await worker_session.rollback()
+                return exc.code
+
+    try:
+        results = await asyncio.gather(
+            process(first_payment.id),
+            process(second_payment.id),
+        )
+
+        async with async_session_maker() as verification_session:
+            verified_first_payment = await verification_session.get(
+                Payment,
+                first_payment.id,
+            )
+            verified_second_payment = await verification_session.get(
+                Payment,
+                second_payment.id,
+            )
+            verified_first_order = await verification_session.get(
+                Order,
+                first_order.id,
+            )
+            verified_second_order = await verification_session.get(
+                Order,
+                second_order.id,
+            )
+            verified_stock = await verification_session.get(Stock, stock.id)
+
+        assert sorted(results) == ["APPROVED", "IDEMPOTENCY_KEY_CONFLICT"]
+        assert {
+            verified_first_payment.status,
+            verified_second_payment.status,
+        } == {
+            PaymentStatus.PENDING,
+            PaymentStatus.APPROVED,
+        }
+        assert {
+            verified_first_order.status,
+            verified_second_order.status,
+        } == {
+            OrderStatus.PENDING_PAYMENT,
+            OrderStatus.PAID,
+        }
+        assert verified_stock.quantidade == 8
+        assert verified_stock.quantidade_reservada == 2
+    finally:
+        async with async_session_maker() as cleanup_session:
+            await cleanup_session.execute(
+                delete(Payment).where(Payment.id == second_payment_id)
+            )
+            await cleanup_session.execute(
+                delete(Order).where(Order.id == second_order_id)
+            )
+            await cleanup_session.commit()

@@ -35,6 +35,21 @@ class PaymentRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
 
+    async def get_by_gateway_transaction_id(
+        self,
+        gateway_transaction_id: str,
+    ) -> Payment | None:
+        statement = (
+            select(Payment)
+            .options(selectinload(Payment.pedido).selectinload(Order.itens))
+            .where(Payment.gateway_transaction_id == gateway_transaction_id)
+        )
+        result = await self.session.execute(statement)
+        return result.scalar_one_or_none()
+
     async def update(self, payment: Payment) -> Payment:
         await self.session.flush()
         return payment
+
+    async def rollback(self) -> None:
+        await self.session.rollback()

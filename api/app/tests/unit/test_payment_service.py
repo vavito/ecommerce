@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, call
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.modules.order.enums import OrderStatus
 from app.modules.order.models import Order, OrderItem
@@ -326,6 +327,65 @@ async def test_concurrent_duplicate_is_rechecked_after_payment_lock() -> None:
     assert result is payment
     stock_service.confirm_reservation.assert_not_awaited()
     repository.update.assert_not_awaited()
+
+
+async def test_concurrent_key_reuse_for_another_payment_returns_conflict() -> None:
+    service, repository, _stock_service = make_service()
+    requested_payment = make_payment()
+    processed_payment = make_payment()
+    processed_payment.status = PaymentStatus.APPROVED
+    processed_payment.idempotency_key = "event-abc"
+    processed_payment.gateway_transaction_id = "gateway-tx-abc"
+    repository.get_by_idempotency_key.side_effect = [
+        None,
+        processed_payment,
+    ]
+    repository.get_by_id_for_update.return_value = requested_payment
+    repository.update.side_effect = IntegrityError(
+        "duplicate idempotency key",
+        {},
+        Exception("unique constraint"),
+    )
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.process_webhook(
+            requested_payment.id,
+            PaymentStatus.APPROVED,
+            "event-abc",
+            "gateway-tx-abc",
+        )
+
+    assert exc_info.value.code == "IDEMPOTENCY_KEY_CONFLICT"
+    repository.rollback.assert_awaited_once()
+    repository.get_by_gateway_transaction_id.assert_not_awaited()
+
+
+async def test_concurrent_gateway_transaction_reuse_returns_conflict() -> None:
+    service, repository, _stock_service = make_service()
+    requested_payment = make_payment()
+    gateway_payment = make_payment()
+    gateway_payment.status = PaymentStatus.APPROVED
+    gateway_payment.idempotency_key = "another-event"
+    gateway_payment.gateway_transaction_id = "gateway-tx-abc"
+    repository.get_by_idempotency_key.side_effect = [None, None]
+    repository.get_by_id_for_update.return_value = requested_payment
+    repository.get_by_gateway_transaction_id.return_value = gateway_payment
+    repository.update.side_effect = IntegrityError(
+        "duplicate gateway transaction",
+        {},
+        Exception("unique constraint"),
+    )
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.process_webhook(
+            requested_payment.id,
+            PaymentStatus.APPROVED,
+            "event-abc",
+            "gateway-tx-abc",
+        )
+
+    assert exc_info.value.code == "GATEWAY_TRANSACTION_CONFLICT"
+    repository.rollback.assert_awaited_once()
 
 
 async def test_idempotency_key_cannot_be_reused_for_another_payment() -> None:
