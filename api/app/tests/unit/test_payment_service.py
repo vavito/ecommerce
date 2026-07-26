@@ -283,6 +283,29 @@ async def test_repeated_webhook_returns_processed_payment_without_new_effects() 
     repository.update.assert_not_awaited()
 
 
+async def test_repeated_webhook_rejects_changed_status() -> None:
+    service, repository, stock_service = make_service()
+    payment = make_payment()
+    payment.status = PaymentStatus.APPROVED
+    payment.pedido.status = OrderStatus.PAID
+    payment.idempotency_key = "event-abc"
+    payment.gateway_transaction_id = "gateway-tx-abc"
+    repository.get_by_idempotency_key.return_value = payment
+
+    with pytest.raises(ConflictException) as exc_info:
+        await service.process_webhook(
+            payment.id,
+            PaymentStatus.REFUSED,
+            "event-abc",
+            "gateway-tx-abc",
+        )
+
+    assert exc_info.value.code == "IDEMPOTENCY_KEY_CONFLICT"
+    repository.get_by_id_for_update.assert_not_awaited()
+    stock_service.release_reservation.assert_not_awaited()
+    repository.update.assert_not_awaited()
+
+
 async def test_concurrent_duplicate_is_rechecked_after_payment_lock() -> None:
     service, repository, stock_service = make_service()
     payment = make_payment()

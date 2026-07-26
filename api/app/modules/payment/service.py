@@ -117,11 +117,13 @@ class PaymentService:
     def _ensure_same_processed_event(
         payment: Payment,
         payment_id: UUID,
+        target_status: PaymentStatus,
         idempotency_key: str,
         gateway_transaction_id: str,
     ) -> None:
         if (
             payment.id != payment_id
+            or payment.status != target_status
             or payment.gateway_transaction_id != gateway_transaction_id
         ):
             PaymentService._raise_idempotency_conflict(
@@ -237,6 +239,7 @@ class PaymentService:
             self._ensure_same_processed_event(
                 processed_payment,
                 payment_id,
+                target_status,
                 normalized_key,
                 normalized_transaction_id,
             )
@@ -248,6 +251,7 @@ class PaymentService:
             self._ensure_same_processed_event(
                 payment,
                 payment_id,
+                target_status,
                 normalized_key,
                 normalized_transaction_id,
             )

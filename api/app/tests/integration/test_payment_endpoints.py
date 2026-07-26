@@ -336,6 +336,46 @@ async def test_mock_webhook_approves_payment_idempotently(
     assert stock.quantidade_reservada == 0
 
 
+async def test_mock_webhook_rejects_changed_payload_for_processed_key(
+    payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
+) -> None:
+    session, _user, _token, payment, order, stock = payment_endpoint_data
+    transport = ASGITransport(app=app)
+    headers = {"Idempotency-Key": "event-changed-payload"}
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first_response = await client.post(
+            "/payments/webhook/mock",
+            json={
+                "payment_id": str(payment.id),
+                "status": "APPROVED",
+                "gateway_transaction_id": "gateway-tx-changed-payload",
+            },
+            headers=headers,
+        )
+        second_response = await client.post(
+            "/payments/webhook/mock",
+            json={
+                "payment_id": str(payment.id),
+                "status": "REFUSED",
+                "gateway_transaction_id": "gateway-tx-changed-payload",
+            },
+            headers=headers,
+        )
+
+    await session.refresh(order)
+    await session.refresh(stock)
+    await session.refresh(payment)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert second_response.json()["code"] == "IDEMPOTENCY_KEY_CONFLICT"
+    assert payment.status is PaymentStatus.APPROVED
+    assert order.status is OrderStatus.PAID
+    assert stock.quantidade == 8
+    assert stock.quantidade_reservada == 0
+
+
 async def test_mock_webhook_refuses_payment_and_releases_reservation(
     payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
 ) -> None:
