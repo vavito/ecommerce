@@ -50,3 +50,24 @@ async def approve_payment(
     await session.refresh(payment)
 
     return PaymentMapper.to_output(payment)
+
+
+@router.post(
+    "/{payment_id}/refuse",
+    response_model=PaymentOut,
+)
+async def refuse_payment(
+    payment_id: UUID,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> PaymentOut:
+    service = _build_payment_service(session)
+    payment = await service.refuse(
+        payment_id,
+        user_id=current_user.id,
+    )
+
+    await session.commit()
+    await session.refresh(payment)
+
+    return PaymentMapper.to_output(payment)
