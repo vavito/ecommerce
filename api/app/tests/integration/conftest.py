@@ -1,4 +1,5 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 import pytest
@@ -10,26 +11,40 @@ from app.modules.user.models import User
 from app.shared.enums import UserRole
 
 
-@pytest.fixture
-async def admin_headers() -> AsyncGenerator[dict[str, str], None]:
+@asynccontextmanager
+async def _authenticated_headers(
+    role: UserRole,
+) -> AsyncIterator[dict[str, str]]:
     unique_value = uuid4()
 
     async with async_session_maker() as session:
-        admin = User(
-            nome="Admin teste",
-            email=f"admin-{unique_value.hex}@example.com",
+        user = User(
+            nome=f"Usuario {role.value}",
+            email=f"{role.value.lower()}-{unique_value.hex}@example.com",
             cpf=f"{unique_value.int % 100_000_000_000:011d}",
             senha_hash="hash",
-            role=UserRole.ADMIN,
+            role=role,
             ativo=True,
         )
-        session.add(admin)
+        session.add(user)
         await session.commit()
 
         try:
             yield {
-                "Authorization": f"Bearer {create_access_token(str(admin.id))}",
+                "Authorization": f"Bearer {create_access_token(str(user.id))}",
             }
         finally:
-            await session.execute(delete(User).where(User.id == admin.id))
+            await session.execute(delete(User).where(User.id == user.id))
             await session.commit()
+
+
+@pytest.fixture
+async def admin_headers() -> AsyncGenerator[dict[str, str], None]:
+    async with _authenticated_headers(UserRole.ADMIN) as headers:
+        yield headers
+
+
+@pytest.fixture
+async def customer_headers() -> AsyncGenerator[dict[str, str], None]:
+    async with _authenticated_headers(UserRole.CUSTOMER) as headers:
+        yield headers
