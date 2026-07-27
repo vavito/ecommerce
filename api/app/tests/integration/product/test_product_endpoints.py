@@ -46,6 +46,7 @@ async def product_category() -> AsyncGenerator[tuple[AsyncSession, Category], No
 
 async def test_create_product_endpoint_returns_persisted_product(
     product_category: tuple[AsyncSession, Category],
+    admin_headers: dict[str, str],
 ) -> None:
     session, category = product_category
     transport = ASGITransport(app=app)
@@ -60,7 +61,11 @@ async def test_create_product_endpoint_returns_persisted_product(
     }
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/admin/products", json=payload)
+        response = await client.post(
+            "/admin/products",
+            json=payload,
+            headers=admin_headers,
+        )
 
     body = response.json()
     saved_product = await ProductRepository(session).get_by_sku(sku.upper())
@@ -78,6 +83,7 @@ async def test_create_product_endpoint_returns_persisted_product(
 
 async def test_update_product_endpoint_changes_only_sent_fields(
     product_category: tuple[AsyncSession, Category],
+    admin_headers: dict[str, str],
 ) -> None:
     session, category = product_category
     transport = ASGITransport(app=app)
@@ -94,11 +100,13 @@ async def test_update_product_endpoint_changes_only_sent_fields(
         create_response = await client.post(
             "/admin/products",
             json=create_payload,
+            headers=admin_headers,
         )
         product_id = create_response.json()["id"]
         update_response = await client.patch(
             f"/admin/products/{product_id}",
             json={"preco": "249.90"},
+            headers=admin_headers,
         )
 
     body = update_response.json()
@@ -114,7 +122,9 @@ async def test_update_product_endpoint_changes_only_sent_fields(
     assert saved_product.nome == create_payload["nome"]
 
 
-async def test_update_product_endpoint_returns_not_found() -> None:
+async def test_update_product_endpoint_returns_not_found(
+    admin_headers: dict[str, str],
+) -> None:
     product_id = uuid4()
     transport = ASGITransport(app=app)
 
@@ -122,6 +132,7 @@ async def test_update_product_endpoint_returns_not_found() -> None:
         response = await client.patch(
             f"/admin/products/{product_id}",
             json={"preco": "249.90"},
+            headers=admin_headers,
         )
 
     assert response.status_code == 404
