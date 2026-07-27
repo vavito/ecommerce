@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.modules.auth.dependencies import AdminUser
 from app.modules.product.repository import ProductRepository
 from app.modules.product.service import ProductService
 
@@ -27,6 +28,7 @@ async def create_stock(
     product_id: UUID,
     data: StockCreate,
     session: SessionDep,
+    _admin: AdminUser,
 ) -> StockOut:
     product_service = ProductService(ProductRepository(session))
     stock_service = StockService(StockRepository(session))
@@ -48,6 +50,7 @@ async def adjust_stock(
     product_id: UUID,
     data: StockAdjust,
     session: SessionDep,
+    _admin: AdminUser,
 ) -> StockOut:
     service = StockService(StockRepository(session))
     stock = await service.adjust(
@@ -69,6 +72,7 @@ async def adjust_stock(
 async def get_stock(
     product_id: UUID,
     session: SessionDep,
+    _admin: AdminUser,
 ) -> StockOut:
     service = StockService(StockRepository(session))
     stock = await service.get_stock(product_id)
