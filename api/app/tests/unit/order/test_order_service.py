@@ -308,6 +308,34 @@ async def test_get_order_returns_order_owned_by_user() -> None:
     )
 
 
+async def test_get_order_allows_admin_to_access_another_users_order() -> None:
+    service, repository, _cart_repository, _stock_service, _user_repository = (
+        make_service()
+    )
+    admin_id = uuid4()
+    order = Order(
+        id=uuid4(),
+        usuario_id=uuid4(),
+        status=OrderStatus.PENDING_PAYMENT,
+        valor_produtos=Decimal("100.00"),
+        valor_frete=Decimal("0.00"),
+        valor_total=Decimal("100.00"),
+        endereco_snapshot={},
+        itens=[],
+    )
+    repository.get_by_id.return_value = order
+
+    result = await service.get_order(
+        admin_id,
+        order.id,
+        is_admin=True,
+    )
+
+    assert result is order
+    repository.get_by_id.assert_awaited_once_with(order.id)
+    repository.get_by_id_and_user_id.assert_not_awaited()
+
+
 async def test_get_order_hides_missing_or_other_users_order() -> None:
     service, repository, _cart_repository, _stock_service, _user_repository = (
         make_service()
