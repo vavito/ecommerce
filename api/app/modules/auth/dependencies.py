@@ -10,6 +10,7 @@ from app.core.database import get_session
 from app.core.security import decode_access_token
 from app.modules.user.models import User
 from app.modules.user.repository import UserRepository
+from app.shared.enums import UserRole
 from app.shared.exceptions import ForbiddenException, UnauthorizedException
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -57,3 +58,19 @@ async def get_current_user(
         )
 
     return user
+
+
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def require_admin(current_user: CurrentUser) -> User:
+    if current_user.role is not UserRole.ADMIN:
+        raise ForbiddenException(
+            code="FORBIDDEN",
+            message="Acesso permitido apenas para administradores.",
+        )
+
+    return current_user
+
+
+AdminUser = Annotated[User, Depends(require_admin)]
