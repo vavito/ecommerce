@@ -11,6 +11,7 @@ from app.modules.stock.repository import StockRepository
 from app.modules.stock.service import StockService
 from app.modules.user.models import User
 from app.modules.user.repository import UserRepository
+from app.shared.enums import UserRole
 
 from .mapper import OrderMapper
 from .repository import OrderRepository
@@ -92,6 +93,10 @@ async def get_order(
     session: SessionDep,
 ) -> OrderOut:
     service = _build_order_service(session)
-    order = await service.get_order(current_user.id, order_id)
+    order = await service.get_order(
+        current_user.id,
+        order_id,
+        is_admin=current_user.role is UserRole.ADMIN,
+    )
 
     return OrderMapper.to_output(order)
