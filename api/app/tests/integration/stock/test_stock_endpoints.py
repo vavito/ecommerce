@@ -59,11 +59,16 @@ async def stock_product() -> AsyncGenerator[tuple[AsyncSession, Product], None]:
 
 async def test_create_stock_endpoint_persists_initial_stock(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     session, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         response = await client.post(
             f"/admin/products/{product.id}/stock",
             json={"quantidade": 20},
@@ -83,11 +88,16 @@ async def test_create_stock_endpoint_persists_initial_stock(
 
 async def test_create_stock_endpoint_rejects_duplicate_stock(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     _, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         first_response = await client.post(
             f"/admin/products/{product.id}/stock",
             json={"quantidade": 10},
@@ -106,11 +116,17 @@ async def test_create_stock_endpoint_rejects_duplicate_stock(
     }
 
 
-async def test_create_stock_endpoint_returns_product_not_found() -> None:
+async def test_create_stock_endpoint_returns_product_not_found(
+    admin_headers: dict[str, str],
+) -> None:
     product_id = uuid4()
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         response = await client.post(
             f"/admin/products/{product_id}/stock",
             json={"quantidade": 10},
@@ -126,11 +142,16 @@ async def test_create_stock_endpoint_returns_product_not_found() -> None:
 
 async def test_adjust_stock_endpoint_adds_entry(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     _, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         await client.post(
             f"/admin/products/{product.id}/stock",
             json={"quantidade": 10},
@@ -147,11 +168,16 @@ async def test_adjust_stock_endpoint_adds_entry(
 
 async def test_adjust_stock_endpoint_removes_exit(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     _, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         await client.post(
             f"/admin/products/{product.id}/stock",
             json={"quantidade": 10},
@@ -168,11 +194,16 @@ async def test_adjust_stock_endpoint_removes_exit(
 
 async def test_adjust_stock_endpoint_rejects_exit_above_available_stock(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     session, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         await client.post(
             f"/admin/products/{product.id}/stock",
             json={"quantidade": 3},
@@ -199,11 +230,16 @@ async def test_adjust_stock_endpoint_rejects_exit_above_available_stock(
 
 async def test_adjust_stock_endpoint_returns_stock_not_found(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     _, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         response = await client.patch(
             f"/admin/products/{product.id}/stock",
             json={"operacao": "ENTRADA", "quantidade": 5},
@@ -219,11 +255,16 @@ async def test_adjust_stock_endpoint_returns_stock_not_found(
 
 async def test_get_stock_endpoint_returns_stock_output(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     _, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         create_response = await client.post(
             f"/admin/products/{product.id}/stock",
             json={"quantidade": 12},
@@ -245,11 +286,16 @@ async def test_get_stock_endpoint_returns_stock_output(
 
 async def test_get_stock_endpoint_returns_not_found_for_product_without_stock(
     stock_product: tuple[AsyncSession, Product],
+    admin_headers: dict[str, str],
 ) -> None:
     _, product = stock_product
     transport = ASGITransport(app=app)
 
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=admin_headers,
+    ) as client:
         response = await client.get(f"/admin/products/{product.id}/stock")
 
     assert response.status_code == 404

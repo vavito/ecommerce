@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.modules.auth.dependencies import AdminUser
 
 from .mapper import ProductMapper
 from .repository import ProductRepository
@@ -24,6 +25,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 async def create_product(
     data: ProductCreate,
     session: SessionDep,
+    _admin: AdminUser,
 ) -> ProductOut:
     repository = ProductRepository(session)
     service = ProductService(repository)
@@ -45,6 +47,7 @@ async def update_product(
     product_id: UUID,
     data: ProductUpdate,
     session: SessionDep,
+    _admin: AdminUser,
 ) -> ProductOut:
     repository = ProductRepository(session)
     service = ProductService(repository)

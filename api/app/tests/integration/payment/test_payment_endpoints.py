@@ -28,6 +28,7 @@ from app.modules.stock.repository import StockRepository
 from app.modules.stock.service import StockService
 from app.modules.user.models import Address, User
 from app.modules.user.repository import UserRepository
+from app.shared.enums import UserRole
 from app.shared.exceptions import ConflictException
 
 
@@ -44,6 +45,7 @@ async def payment_endpoint_data() -> AsyncGenerator[
             email=f"joao-payment-endpoint-{unique_value}@example.com",
             cpf=unique_value[:11],
             senha_hash="hash",
+            role=UserRole.ADMIN,
             ativo=True,
         )
         category = Category(
@@ -164,7 +166,7 @@ async def test_approve_payment_endpoint_confirms_order_and_stock(
     assert stock.quantidade_disponivel == 8
 
 
-async def test_approve_payment_endpoint_hides_another_users_payment(
+async def test_approve_payment_endpoint_blocks_customer(
     payment_endpoint_data: tuple[AsyncSession, User, str, Payment, Order, Stock],
 ) -> None:
     session, _user, _token, payment, order, stock = payment_endpoint_data
@@ -192,8 +194,8 @@ async def test_approve_payment_endpoint_hides_another_users_payment(
     await session.refresh(stock)
     await session.refresh(payment)
 
-    assert response.status_code == 404
-    assert response.json()["code"] == "PAYMENT_NOT_FOUND"
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
     assert payment.status is PaymentStatus.PENDING
     assert order.status is OrderStatus.PENDING_PAYMENT
     assert stock.quantidade == 10

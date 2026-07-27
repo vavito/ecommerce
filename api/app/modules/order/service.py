@@ -152,11 +152,20 @@ class OrderService:
             limit=limit,
         )
 
-    async def get_order(self, user_id: UUID, order_id: UUID) -> Order:
-        order = await self.repository.get_by_id_and_user_id(
-            order_id,
-            user_id,
-        )
+    async def get_order(
+        self,
+        user_id: UUID,
+        order_id: UUID,
+        *,
+        is_admin: bool = False,
+    ) -> Order:
+        if is_admin:
+            order = await self.repository.get_by_id(order_id)
+        else:
+            order = await self.repository.get_by_id_and_user_id(
+                order_id,
+                user_id,
+            )
 
         if order is None:
             raise NotFoundException(

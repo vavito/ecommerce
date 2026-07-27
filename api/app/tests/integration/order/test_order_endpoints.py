@@ -401,6 +401,34 @@ async def test_get_order_returns_owned_order_details(
     assert body["itens"][0]["produto_id"] == str(product.id)
 
 
+async def test_get_order_allows_admin_access_to_customers_order(
+    checkout_endpoint_data: tuple[
+        AsyncSession,
+        User,
+        str,
+        Address,
+        Product,
+        Stock,
+        Cart,
+    ],
+    admin_headers: dict[str, str],
+) -> None:
+    session, user, _token, address, product, _stock, _cart = checkout_endpoint_data
+    order = await OrderRepository(session).add(make_order(user.id, product, address))
+    await session.commit()
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            f"/orders/{order.id}",
+            headers=admin_headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == str(order.id)
+    assert response.json()["usuario_id"] == str(user.id)
+
+
 async def test_get_order_hides_order_from_another_user(
     checkout_endpoint_data: tuple[
         AsyncSession,
