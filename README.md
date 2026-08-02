@@ -151,6 +151,9 @@ A API estará disponível em `http://localhost:8000`:
 A relação completa de rotas e as decisões técnicas estão em
 [`api/API_FUNCIONAMENTO.md`](api/API_FUNCIONAMENTO.md).
 
+Para executar o fluxo manual completo, importe a
+[`collection do Postman`](api/docs/postman/README.md).
+
 ## Qualidade
 
 ```powershell

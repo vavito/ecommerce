@@ -1,0 +1,535 @@
+{
+  "info": {
+    "_postman_id": "88af921c-aa66-4af4-9069-18f79a389f98",
+    "name": "Ecommerce API",
+    "description": "Fluxo demonstrável da Ecommerce API. Execute as pastas em ordem e use o environment Ecommerce API - Local. Tokens e IDs são capturados automaticamente; payment_id precisa ser preenchido após o checkout conforme o README da collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Resposta sem erro interno\", function () {",
+          "    pm.expect(pm.response.code).to.be.below(500);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Health",
+      "description": "Confirma que a aplicação está respondendo antes da demonstração.",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01 - Cliente",
+      "description": "Cria um cliente único e salva seu access token no environment.",
+      "item": [
+        {
+          "name": "Registrar cliente",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const stamp = Date.now().toString();",
+                  "pm.environment.set(\"customer_email\", `cliente.${stamp}@example.com`);",
+                  "pm.environment.set(\"customer_cpf\", stamp.slice(-11));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Cliente criado\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) { pm.environment.set(\"customer_id\", pm.response.json().id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"{{customer_name}}\",\n  \"email\": \"{{customer_email}}\",\n  \"cpf\": \"{{customer_cpf}}\",\n  \"senha\": \"{{customer_password}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Login cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Login realizado\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.environment.set(\"customer_token\", pm.response.json().access_token); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer_email}}\",\n  \"senha\": \"{{customer_password}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/login"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 - Usuário",
+      "description": "Consulta o usuário autenticado e cria o endereço usado no checkout.",
+      "item": [
+        {
+          "name": "Consultar meu usuário",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/users/me"
+          },
+          "response": []
+        },
+        {
+          "name": "Criar endereço",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Endereço criado\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) { pm.environment.set(\"address_id\", pm.response.json().id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cep\": \"01001000\",\n  \"rua\": \"Praça da Sé\",\n  \"numero\": \"100\",\n  \"complemento\": \"Apto 12\",\n  \"bairro\": \"Sé\",\n  \"cidade\": \"São Paulo\",\n  \"estado\": \"SP\",\n  \"principal\": true\n}"
+            },
+            "url": "{{base_url}}/users/me/addresses"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 - Catálogo",
+      "description": "Rotas públicas do catálogo. A listagem salva category_id a partir do primeiro produto do seed.",
+      "item": [
+        {
+          "name": "Listar produtos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (body.items && body.items.length > 0) { pm.environment.set(\"category_id\", body.items[0].categoria_id); }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/products?offset=0&limit=20"
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar produto por UUID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/products/{{product_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar produto por slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/products/by-slug/{{product_slug}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 - Administrador",
+      "description": "Registre o candidato uma vez, promova-o no PostgreSQL conforme o guia e então execute o login.",
+      "item": [
+        {
+          "name": "Registrar candidato a admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.environment.set(\"admin_id\", pm.response.json().id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Administrador Portfolio\",\n  \"email\": \"{{admin_email}}\",\n  \"cpf\": \"98765432100\",\n  \"senha\": \"{{admin_password}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/register",
+            "description": "Se retornar 409 porque o usuário já existe, prossiga para a promoção/login."
+          },
+          "response": []
+        },
+        {
+          "name": "Login admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Login administrativo realizado\", function () { pm.response.to.have.status(200); });",
+                  "if (pm.response.code === 200) { pm.environment.set(\"admin_token\", pm.response.json().access_token); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"senha\": \"{{admin_password}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/login"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05 - Produto e estoque",
+      "description": "Cria um produto administrativo, atualiza seus dados e prepara estoque para o carrinho.",
+      "item": [
+        {
+          "name": "Criar produto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Produto criado\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.environment.set(\"product_id\", body.id);",
+                  "    pm.environment.set(\"product_slug\", body.slug);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoria_id\": \"{{category_id}}\",\n  \"nome\": \"Produto demonstração {{$timestamp}}\",\n  \"descricao\": \"Produto criado pela collection do Postman.\",\n  \"sku\": \"PORT-{{$timestamp}}\",\n  \"preco\": 149.90\n}"
+            },
+            "url": "{{base_url}}/admin/products"
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar produto",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descricao\": \"Produto atualizado durante a demonstração.\",\n  \"preco\": 159.90\n}"
+            },
+            "url": "{{base_url}}/admin/products/{{product_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Criar estoque",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"quantidade\": 20\n}"},
+            "url": "{{base_url}}/admin/products/{{product_id}}/stock"
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar estoque",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/admin/products/{{product_id}}/stock"
+          },
+          "response": []
+        },
+        {
+          "name": "Ajustar estoque - entrada",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"operacao\": \"ENTRADA\",\n  \"quantidade\": 5\n}"},
+            "url": "{{base_url}}/admin/products/{{product_id}}/stock"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06 - Carrinho",
+      "description": "A sequência demonstra criação, adição, atualização, remoção e nova adição para deixar um item pronto para o checkout.",
+      "item": [
+        {
+          "name": "Obter carrinho",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/cart"
+          },
+          "response": []
+        },
+        {
+          "name": "Adicionar item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.environment.set(\"cart_item_id\", pm.response.json().id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"produto_id\": \"{{product_id}}\",\n  \"quantidade\": 2\n}"},
+            "url": "{{base_url}}/cart/items"
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar quantidade",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"quantidade\": 3\n}"},
+            "url": "{{base_url}}/cart/items/{{cart_item_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Remover item",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/cart/items/{{cart_item_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Adicionar novamente para checkout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { pm.environment.set(\"cart_item_id\", pm.response.json().id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"produto_id\": \"{{product_id}}\",\n  \"quantidade\": 2\n}"},
+            "url": "{{base_url}}/cart/items"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "07 - Checkout",
+      "description": "Cria pedido, reserva estoque, cria pagamento pendente e fecha o carrinho.",
+      "item": [
+        {
+          "name": "Finalizar checkout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Pedido criado\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) { pm.environment.set(\"order_id\", pm.response.json().id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"endereco_id\": \"{{address_id}}\",\n  \"metodo_pagamento\": \"PIX\"\n}"
+            },
+            "url": "{{base_url}}/orders/checkout"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "08 - Pagamento",
+      "description": "Preencha payment_id após o checkout. Webhook, aprovação manual e recusa manual são alternativas; não execute as três para o mesmo pagamento.",
+      "item": [
+        {
+          "name": "Webhook mock - aprovar (fluxo recomendado)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"idempotency_key\")) { pm.environment.set(\"idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\")); }",
+                  "if (!pm.environment.get(\"gateway_transaction_id\")) { pm.environment.set(\"gateway_transaction_id\", `mock-${Date.now()}`); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Idempotency-Key", "value": "{{idempotency_key}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_id\": \"{{payment_id}}\",\n  \"status\": \"APPROVED\",\n  \"gateway_transaction_id\": \"{{gateway_transaction_id}}\"\n}"
+            },
+            "url": "{{base_url}}/payments/webhook/mock"
+          },
+          "response": []
+        },
+        {
+          "name": "[Alternativa] Aprovar manualmente",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/payments/{{payment_id}}/approve"
+          },
+          "response": []
+        },
+        {
+          "name": "[Alternativa] Recusar manualmente",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/payments/{{payment_id}}/refuse"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "09 - Pedidos",
+      "description": "Confirma o resultado final do fluxo pelo cliente e demonstra a consulta administrativa por ID.",
+      "item": [
+        {
+          "name": "Listar meus pedidos",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/orders?offset=0&limit=20"
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar meu pedido",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{customer_token}}", "type": "string"}]},
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/orders/{{order_id}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar pedido como admin",
+          "request": {
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{admin_token}}", "type": "string"}]},
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/orders/{{order_id}}"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
