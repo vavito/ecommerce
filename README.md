@@ -72,7 +72,21 @@ Copy-Item .env.example .env
 ```
 
 Atualize as credenciais do `.env` e use uma `JWT_SECRET_KEY` segura com pelo menos
-32 caracteres. Em seguida:
+32 caracteres.
+
+### Com Docker
+
+O Compose constrói a API, aguarda o PostgreSQL ficar saudável, aplica as migrations
+e inicia o Uvicorn:
+
+```powershell
+docker compose up --build -d
+docker compose exec api python -m app.scripts.seed
+```
+
+### API local e banco no Docker
+
+Para executar o servidor diretamente no ambiente Python:
 
 ```powershell
 docker compose up -d db
@@ -88,6 +102,8 @@ A API estará disponível em `http://localhost:8000`:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 - Health check: `http://localhost:8000/health`
+
+Use `docker compose down` para encerrar os containers sem apagar o volume do banco.
 
 ## Endpoints principais
 
@@ -166,11 +182,12 @@ A suíte atual possui 210 testes: 113 unitários e 97 de integração.
 
 ## Próximos passos
 
-- [ ] Criar Dockerfile da API e finalizar o ambiente completo no Docker Compose
+- [x] Criar Dockerfile da API e finalizar o ambiente completo no Docker Compose
 - [ ] Integrar um gateway de pagamento real com assinatura de webhooks
 - [ ] Adicionar refresh token, recuperação de senha e revogação de acesso
 - [ ] Configurar CORS e integrar um frontend ao fluxo de compra
 - [ ] Criar pipeline de CI/CD, deploy e observabilidade da aplicação
+- [ ] Expirar automaticamente reservas de pedidos que não forem pagos
 
 ## Autor
 

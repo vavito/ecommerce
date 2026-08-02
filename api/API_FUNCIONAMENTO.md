@@ -475,36 +475,64 @@ escopo atual: categorias são identificadas pelo slug e produtos pelo SKU, porta
 pode ser executado novamente sem duplicá-los. Ele não cria usuários, endereços nem
 estoque.
 
-## 13. Execução local
+## 13. Execução
 
 A partir da raiz do repositório:
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up -d db
 ```
 
-Edite o `.env`, depois execute dentro de `api`:
+Edite o `.env` antes de escolher um dos modos abaixo. A chave JWT deve possuir pelo
+menos 32 caracteres.
+
+### Stack completa no Docker
 
 ```powershell
+docker compose up --build -d
+docker compose exec api python -m app.scripts.seed
+docker compose ps
+```
+
+O serviço `db` inicia primeiro. Seu healthcheck usa `pg_isready`; somente depois do
+banco saudável o serviço `api` executa `alembic upgrade head` e inicia o Uvicorn. A
+API possui outro healthcheck baseado em `/health`.
+
+Dentro da rede do Compose, a API acessa o PostgreSQL pelo hostname `db` e pela porta
+interna `5432`. A porta `POSTGRES_PORT` serve apenas para publicar o banco no host;
+`API_PORT` publica a API e usa `8000` como padrão.
+
+### API local com banco no Docker
+
+```powershell
+docker compose up -d db
+cd api
 python -m pip install -e ".[dev]"
 alembic upgrade head
 task seed
 uvicorn app.main:app --reload
 ```
 
-Comandos úteis:
+Nesse modo, `DATABASE_URL` usa `localhost` e a porta configurada em
+`POSTGRES_PORT`. Os comandos Python devem ser executados dentro da pasta `api`.
+
+### Comandos úteis
 
 ```powershell
 task lint
 task format
 task test
+docker compose logs -f api
 docker compose logs -f db
-docker compose stop db
+docker compose down
 ```
 
 O volume nomeado `postgres_data` mantém os dados quando o container é parado ou
 recriado. `docker compose down -v` também remove esse volume e apaga os dados locais.
+
+O Dockerfile usa `python:3.12-slim`, instala apenas dependências de runtime e executa
+a aplicação com um usuário sem privilégios de root. O `.dockerignore` exclui testes,
+caches e documentação auxiliar do contexto de build.
 
 ## 14. Testes
 
@@ -573,8 +601,8 @@ expor essa informação no pedido é uma evolução possível.
 
 ## 16. Pontos de atenção e evoluções
 
-- O Docker Compose atual sobe somente o PostgreSQL; a API ainda não possui
-  Dockerfile.
+- O Compose atende ao ambiente local e de demonstração; uma publicação real ainda
+  precisa de registry, TLS, proxy reverso e uma estratégia de deploy.
 - Não há CORS configurado. Um frontend em outra origem precisará de uma lista
   explícita de origens permitidas.
 - O gateway é mock e o webhook ainda não possui verificação criptográfica.
